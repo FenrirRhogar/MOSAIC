@@ -340,7 +340,7 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     processor.addChangeListener (this);
 
     setResizable (true, true);
-    setResizeLimits (720, 600, 1800, 1300);
+    setResizeLimits (860, 600, 1800, 1300);
     setSize (980, 800);
     rebuildGridLayout();
     selectPad (processor.getActivePad());   // restore selection (survives reopen/minimize)
@@ -460,12 +460,14 @@ void MosaicEditor::setupLfoStrip (int i)
     addAndMakeVisible (s.target);
     addAndMakeVisible (s.scope);
 
+    // Linear sliders fit the compact horizontal strip far better than rotaries.
     for (auto* sl : { &s.rate, &s.depth })
     {
-        sl->setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-        sl->setTextBoxStyle (juce::Slider::TextBoxBelow, false, 54, 14);
+        sl->setSliderStyle (juce::Slider::LinearHorizontal);
+        sl->setTextBoxStyle (juce::Slider::TextBoxRight, false, 46, 18);
         addAndMakeVisible (*sl);
     }
+    s.rate.setTextValueSuffix (" Hz");
 
     s.enableAtt   = std::make_unique<ButtonAttachment> (apvts, ParamID::lfoEnable (i),   s.enable);
     s.syncAtt     = std::make_unique<ButtonAttachment> (apvts, ParamID::lfoSync (i),     s.sync);
@@ -480,15 +482,15 @@ void MosaicEditor::setupLfoStrip (int i)
 void MosaicEditor::layoutLfoStrip (int i, juce::Rectangle<int> row)
 {
     auto& s = lfoStrips[i];
-    s.name.setBounds    (row.removeFromLeft (46));
-    s.enable.setBounds  (row.removeFromLeft (44));
-    s.shape.setBounds   (row.removeFromLeft (84));  row.removeFromLeft (6);
-    s.rate.setBounds    (row.removeFromLeft (52));
-    s.sync.setBounds    (row.removeFromLeft (52));
-    s.syncRate.setBounds(row.removeFromLeft (64));  row.removeFromLeft (6);
-    s.depth.setBounds   (row.removeFromLeft (52));  row.removeFromLeft (6);
-    s.target.setBounds  (row.removeFromLeft (84));  row.removeFromLeft (6);
-    s.scope.setBounds   (row.removeFromLeft (90));
+    s.name.setBounds    (row.removeFromLeft (42));
+    s.enable.setBounds  (row.removeFromLeft (40));  row.removeFromLeft (4);
+    s.shape.setBounds   (row.removeFromLeft (80));  row.removeFromLeft (8);
+    s.rate.setBounds    (row.removeFromLeft (128)); row.removeFromLeft (8);
+    s.sync.setBounds    (row.removeFromLeft (48));
+    s.syncRate.setBounds(row.removeFromLeft (56));  row.removeFromLeft (10);
+    s.depth.setBounds   (row.removeFromLeft (116)); row.removeFromLeft (10);
+    s.target.setBounds  (row.removeFromLeft (82));  row.removeFromLeft (8);
+    s.scope.setBounds   (row.removeFromLeft (86));
 }
 
 //==============================================================================
