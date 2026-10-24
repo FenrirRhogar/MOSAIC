@@ -22,11 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pin CMake (JUCE 8 is unhappy with CMake 4.x on some runners)
-        uses: jwlawson/actions-setup-cmake@v2
-        with:
-          cmake-version: '3.29.6'
-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
