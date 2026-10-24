@@ -1,0 +1,16 @@
+# Build output
+/build/
+/build_*/
+/Builds/
+**/_deps/
+*.vcxproj.user
+
+# Local packaging / logs
+/Zips/
+/logs_extracted/
+/dist/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini

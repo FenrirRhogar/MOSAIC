@@ -1,0 +1,74 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows, os: windows-latest, extra: "" }
+          - { name: macOS,   os: macos-latest,   extra: "-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15" }
+          - { name: Linux,   os: ubuntu-latest,   extra: "" }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev libjack-jackd2-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libxinerama-dev libxrandr-dev libxrender-dev \
+            libfreetype6-dev libglu1-mesa-dev
+
+      - name: Configure
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release ${{ matrix.extra }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Upload plugins
+        uses: actions/upload-artifact@v4
+        with:
+          name: MOSAIC-${{ matrix.name }}
+          if-no-files-found: ignore
+          path: |
+            build/MOSAIC_artefacts/Release/VST3/MOSAIC.vst3/**
+            build/MOSAIC_artefacts/Release/AU/MOSAIC.component/**
+            build/MOSAIC_artefacts/Release/Standalone/MOSAIC.exe
+            build/MOSAIC_artefacts/Release/Standalone/MOSAIC.app/**
+            build/MOSAIC_artefacts/Release/Standalone/MOSAIC
+
+  # On a version tag (e.g. v1.0.0) collect everything into a GitHub Release.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Zip per platform
+        run: |
+          cd dist
+          for d in */; do (cd "$d" && zip -r "../${d%/}.zip" .); done
+          ls -la
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
