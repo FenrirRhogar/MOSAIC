@@ -68,13 +68,30 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist
-      - name: Zip per platform
+      - name: Package per platform
         run: |
           cd dist
-          for d in */; do (cd "$d" && zip -r "../${d%/}.zip" .); done
+          for d in */; do
+            name="${d%/}"
+            printf 'MOSAIC\n\nThis archive contains the ready-to-use plugin/app (NOT source code).\n\nInstall:\n- VST3: copy the MOSAIC.vst3 folder to your VST3 plug-ins folder\n    Windows: C:\\Program Files\\Common Files\\VST3\n    macOS:   ~/Library/Audio/Plug-Ins/VST3\n- AU (macOS): copy MOSAIC.component to ~/Library/Audio/Plug-Ins/Components\n- Standalone: just run MOSAIC (.exe / .app)\n' > "$d/INSTALL.txt"
+            (cd "$d" && zip -r "../$name.zip" .)
+          done
           ls -la
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip
+          body: |
+            ## Downloads — pick the zip for your OS
+
+            > ⚠️ Download **MOSAIC-Windows.zip / MOSAIC-macOS.zip / MOSAIC-Linux.zip** below.
+            > The **"Source code (zip/tar.gz)"** links are added automatically by GitHub — you do **not** need them.
+
+            | OS | File | Contains |
+            |----|------|----------|
+            | Windows | `MOSAIC-Windows.zip` | `MOSAIC.vst3` + standalone `MOSAIC.exe` |
+            | macOS | `MOSAIC-macOS.zip` | `MOSAIC.vst3`, `MOSAIC.component` (AU), `MOSAIC.app` (universal) |
+            | Linux | `MOSAIC-Linux.zip` | `MOSAIC.vst3` + standalone |
+
+            Each zip includes an `INSTALL.txt`. macOS builds are unsigned — right-click → Open the first time.
           generate_release_notes: true
