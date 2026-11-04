@@ -4,19 +4,21 @@
 #include <set>
 #include "PluginProcessor.h"
 #include "PadComponent.h"
+#include "Theme.h"
 
 //==============================================================================
 /*  MOSAIC colour palette + custom look-and-feel. */
 namespace Mosaic
 {
-    const juce::Colour bg       { 0xff121218 };
-    const juce::Colour bgDeep   { 0xff0c0c11 };
-    const juce::Colour panel    { 0xff1d1d27 };
-    const juce::Colour panelHi  { 0xff29293a };
+    // The fenrikos palette (see Theme.h), with MOSAIC's teal and pink accents.
+    const juce::Colour bg       { 0xff1e2127 };
+    const juce::Colour bgDeep   { 0xff131519 };
+    const juce::Colour panel    { 0xff1a1d22 };
+    const juce::Colour panelHi  { 0xff252930 };
     const juce::Colour accent   { 0xff37d6c2 };   // teal
     const juce::Colour accent2  { 0xffff5e87 };   // pink
-    const juce::Colour text     { 0xffe9e9f1 };
-    const juce::Colour textDim  { 0xff888897 };
+    const juce::Colour text     { 0xffe2e5ea };
+    const juce::Colour textDim  { 0xff868c97 };
 }
 
 class MosaicLookAndFeel : public juce::LookAndFeel_V4
@@ -33,7 +35,18 @@ public:
                        juce::ComboBox&) override;
 
     juce::Font getComboBoxFont (juce::ComboBox&) override;
+    void positionComboBoxText (juce::ComboBox&, juce::Label&) override;
     juce::Font getLabelFont (juce::Label&) override;
+    juce::Label* createSliderTextBox (juce::Slider&) override;
+
+    void drawLinearSlider (juce::Graphics&, int x, int y, int w, int h,
+                           float sliderPos, float minSliderPos, float maxSliderPos,
+                           juce::Slider::SliderStyle, juce::Slider&) override;
+    void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&,
+                               bool isMouseOver, bool isButtonDown) override;
+    void drawButtonText (juce::Graphics&, juce::TextButton&, bool isMouseOver, bool isButtonDown) override;
+    void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool isMouseOver, bool isButtonDown) override;
+    void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
 };
 
 //==============================================================================
@@ -117,7 +130,8 @@ private:
     MosaicAudioProcessor& processor;
 
     // Header ---------------------------------------------------------------
-    juce::Label   titleLabel, subtitleLabel;
+    juce::Image   background;                   // everything static, redrawn only on resize
+    void paintBackground (juce::Graphics& g);
     juce::Slider  rowsSlider, colsSlider;
     juce::Label   rowsLabel,  colsLabel;
     std::unique_ptr<SliderAttachment> rowsAttachment, colsAttachment;
