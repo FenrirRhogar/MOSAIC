@@ -6,12 +6,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(MOSAIC_LTO "Link-time optimisation (slow links; turn off for development)" ON)
+set(JUCE_DIR "" CACHE PATH "Local JUCE 8 checkout; fetched from GitHub when empty")
+
 # ──────────────────────────────────────────────────────────────────────────────
-# JUCE framework — reuse the local checkout two levels up (this repo is JUCE).
-# Falls back to fetching a matching tag if built standalone elsewhere.
+# JUCE framework: a local checkout if given, otherwise the pinned release.
 # ──────────────────────────────────────────────────────────────────────────────
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../CMakeLists.txt")
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../.. ${CMAKE_CURRENT_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
+if(JUCE_DIR)
+    add_subdirectory(${JUCE_DIR} JUCE EXCLUDE_FROM_ALL)
 else()
     include(FetchContent)
     FetchContent_Declare(
@@ -109,6 +111,10 @@ target_link_libraries(MOSAIC
         juce::juce_gui_extra
     PUBLIC
         juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+if(MOSAIC_LTO)
+    target_link_libraries(MOSAIC PUBLIC juce::juce_recommended_lto_flags)
+endif()
+
