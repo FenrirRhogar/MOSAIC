@@ -325,28 +325,105 @@ void MosaicAudioProcessor::valueTreePropertyChanged (juce::ValueTree& tree,
 }
 
 //==============================================================================
-bool MosaicAudioProcessor::setPadSample (int padIndex, const juce::File& file)
+std::optional<MosaicAudioProcessor::DecodedSample> MosaicAudioProcessor::decodeSample (const juce::File& file)
 {
     std::unique_ptr<juce::AudioFormatReader> reader (formatManager.createReaderFor (file));
     if (reader == nullptr || reader->lengthInSamples <= 0)
-        return false;
+        return std::nullopt;
 
     const int numCh   = (int) reader->numChannels;
     const int lengthN = (int) reader->lengthInSamples;
 
-    juce::AudioBuffer<float> buffer (juce::jmax (1, numCh), lengthN);
-    reader->read (&buffer, 0, lengthN, 0, true, true);
+    DecodedSample decoded { juce::AudioBuffer<float> (juce::jmax (1, numCh), lengthN), reader->sampleRate };
+    reader->read (&decoded.buffer, 0, lengthN, 0, true, true);
+    return decoded;
+}
 
-    engine.loadSample (padIndex, std::move (buffer), reader->sampleRate);
+void MosaicAudioProcessor::applyDecodedSample (int padIndex, const juce::File& file, DecodedSample&& decoded)
+{
+    engine.loadSample (padIndex, std::move (decoded.buffer), decoded.sampleRate);
+    sampleMissing[padIndex].store (false);
 
     if (auto m = padMeta (padIndex); m.isValid())
         m.setProperty (kFileProp, file.getFullPathName(), nullptr);
+}
 
+bool MosaicAudioProcessor::setPadSample (int padIndex, const juce::File& file)
+{
+    if (padIndex < 0 || padIndex >= Config::maxPads)
+        return false;
+
+    ++loadGeneration[padIndex];   // supersedes any background load still running
+    auto decoded = decodeSample (file);
+    if (! decoded)
+        return false;
+
+    applyDecodedSample (padIndex, file, std::move (*decoded));
     return true;
+}
+
+void MosaicAudioProcessor::requestPadSample (int padIndex, const juce::File& file)
+{
+    if (padIndex < 0 || padIndex >= Config::maxPads)
+        return;
+
+    const int generation = ++loadGeneration[padIndex];
+    juce::WeakReference<MosaicAudioProcessor> self (this);
+
+    sampleLoader.addJob ([this, self, padIndex, file, generation]
+    {
+        auto decoded = decodeSample (file);   // the slow part, off the message thread
+        if (! decoded)
+            return;
+
+        juce::MessageManager::callAsync ([self, padIndex, file, generation, decoded = std::move (*decoded)]() mutable
+        {
+            // Skip results that a newer load or a clear has already superseded.
+            if (self == nullptr || self->loadGeneration[padIndex].load() != generation)
+                return;
+            self->applyDecodedSample (padIndex, file, std::move (decoded));
+        });
+    });
+}
+
+bool MosaicAudioProcessor::isPadSampleMissing (int padIndex) const noexcept
+{
+    return padIndex >= 0 && padIndex < Config::maxPads && sampleMissing[padIndex].load();
+}
+
+int MosaicAudioProcessor::getNumMissingSamples() const noexcept
+{
+    int count = 0;
+    for (const auto& missing : sampleMissing)
+        count += missing.load() ? 1 : 0;
+    return count;
+}
+
+int MosaicAudioProcessor::relinkMissingSamples (const juce::File& folder)
+{
+    int found = 0;
+    for (int p = 0; p < Config::maxPads; ++p)
+    {
+        if (! sampleMissing[p].load())
+            continue;
+
+        const auto name = juce::File (getPadFilePath (p)).getFileName();
+        const auto matches = folder.findChildFiles (juce::File::findFiles, true, name);
+        if (! matches.isEmpty() && setPadSample (p, matches.getFirst()))
+            ++found;
+    }
+
+    sendChangeMessage();
+    return found;
 }
 
 void MosaicAudioProcessor::clearPad (int padIndex)
 {
+    if (padIndex < 0 || padIndex >= Config::maxPads)
+        return;
+
+    ++loadGeneration[padIndex];   // cancels a background load still in flight
+    sampleMissing[padIndex].store (false);
     engine.clearSample (padIndex);
 
     if (auto m = padMeta (padIndex); m.isValid())
@@ -393,19 +470,18 @@ void MosaicAudioProcessor::syncEngineFromMeta()
         engine.setOutputBus  (p, (int) m.getProperty (kBusProp, 0));
         updatePadLedColour (p);
 
+        // Samples load synchronously here: some hosts render offline right after opening a
+        // session, and a sample arriving a moment later would be missing from the bounce.
         const auto path = m.getProperty (kFileProp, juce::String()).toString();
-        if (path.isNotEmpty())
+        const juce::File f (path);
+        const bool found = path.isNotEmpty() && f.existsAsFile() && setPadSample (p, f);
+        if (! found)
         {
-            const juce::File f (path);
-            if (f.existsAsFile())
-                setPadSample (p, f);
-            else
-                engine.clearSample (p);
-        }
-        else
-        {
+            ++loadGeneration[p];
             engine.clearSample (p);
         }
+        // A referenced file that is gone stays referenced, so it can be relinked later.
+        sampleMissing[p].store (path.isNotEmpty() && ! found);
     }
 
     sendChangeMessage();
@@ -434,6 +510,7 @@ void MosaicAudioProcessor::restoreFromXml (const juce::XmlElement& xml)
 
     metaTree.removeListener (this);
     apvts.replaceState (juce::ValueTree::fromXml (xml));
+
 
     // Re-acquire (or rebuild) the metadata child after the state swap.
     metaTree = apvts.state.getChildWithName (kMetaType);

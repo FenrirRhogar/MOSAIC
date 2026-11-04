@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <optional>
 #include "Parameters.h"
 #include "SamplerEngine.h"
 
@@ -62,7 +63,17 @@ public:
     // Public API used by the editor (all message thread).
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
 
-    bool          setPadSample  (int padIndex, const juce::File& file);
+    bool          setPadSample  (int padIndex, const juce::File& file);   // decodes now (state restore)
+    /// Decodes in the background so the UI never freezes; if several loads overlap, the newest wins.
+    void          requestPadSample (int padIndex, const juce::File& file);
+
+    /// A pad whose sample file could not be found when the session or preset was opened.
+    /// Its path is kept, so saving the session does not forget it.
+    bool          isPadSampleMissing (int padIndex) const noexcept;
+    int           getNumMissingSamples() const noexcept;
+    /// Searches @p folder and its subfolders for missing samples by file name and loads them.
+    /// Returns how many were found.
+    int           relinkMissingSamples (const juce::File& folder);
     void          clearPad      (int padIndex);
     void          setPadColour  (int padIndex, juce::Colour colour);
     void          setPadOutputBus (int padIndex, int bus);
@@ -153,5 +164,20 @@ private:
     int lastLedNote[Config::maxPads];
     static constexpr int ledChannel = 1;
 
+    struct DecodedSample
+    {
+        juce::AudioBuffer<float> buffer;
+        double sampleRate = 44100.0;
+    };
+    std::optional<DecodedSample> decodeSample (const juce::File& file);
+    void applyDecodedSample (int padIndex, const juce::File& file, DecodedSample&& decoded);
+
+    std::atomic<int>  loadGeneration[Config::maxPads] {};   // bumped by every load or clear
+    std::atomic<bool> sampleMissing [Config::maxPads] {};
+
+    // Declared last: destroyed first, so a running decode finishes before the members it uses go.
+    juce::ThreadPool sampleLoader { 1 };
+
+    JUCE_DECLARE_WEAK_REFERENCEABLE (MosaicAudioProcessor)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MosaicAudioProcessor)
 };
