@@ -118,3 +118,13 @@ if(MOSAIC_LTO)
     target_link_libraries(MOSAIC PUBLIC juce::juce_recommended_lto_flags)
 endif()
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Unit tests (run the MOSAICTests executable). Links the plugin's shared code.
+# ──────────────────────────────────────────────────────────────────────────────
+option(MOSAIC_TESTS "Build the unit tests" ON)
+if(MOSAIC_TESTS)
+    add_executable(MOSAICTests tests/ProcessorTests.cpp)
+    target_include_directories(MOSAICTests PRIVATE $<TARGET_PROPERTY:MOSAIC,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(MOSAICTests PRIVATE $<TARGET_PROPERTY:MOSAIC,COMPILE_DEFINITIONS>)
+    target_link_libraries(MOSAICTests PRIVATE MOSAIC)
+endif()
