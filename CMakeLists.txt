@@ -128,3 +128,14 @@ if(MOSAIC_TESTS)
     target_compile_definitions(MOSAICTests PRIVATE $<TARGET_PROPERTY:MOSAIC,COMPILE_DEFINITIONS>)
     target_link_libraries(MOSAICTests PRIVATE MOSAIC)
 endif()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Optional: MOSAIC_snapshot renders the editor to PNG (store artwork, visual checks)
+# ──────────────────────────────────────────────────────────────────────────────
+option(MOSAIC_SNAPSHOT "Build the editor snapshot tool" OFF)
+if(MOSAIC_SNAPSHOT)
+    add_executable(MOSAIC_snapshot tools/Snapshot.cpp)
+    target_include_directories(MOSAIC_snapshot PRIVATE $<TARGET_PROPERTY:MOSAIC,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(MOSAIC_snapshot PRIVATE $<TARGET_PROPERTY:MOSAIC,COMPILE_DEFINITIONS>)
+    target_link_libraries(MOSAIC_snapshot PRIVATE MOSAIC)
+endif()
