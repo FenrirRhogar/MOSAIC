@@ -237,6 +237,21 @@ void PadComponent::paint (juce::Graphics& g)
             g.fillEllipse (cx - 3.0f, (float) wave.getY() - 1.0f, 6.0f, 6.0f);
         }
     }
+    else if (processor.isPadSampleMissing (pad))
+    {
+        // The session refers to a file that is gone: say so, and name it for relinking.
+        const auto warning = juce::Colour (0xffff7a59);
+        g.setColour (warning.withAlpha (0.12f));
+        g.fillRect (wave);
+        g.setColour (warning);
+        g.drawRect (wave, 1);
+        g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        g.drawText ("MISSING", wave.withTrimmedBottom (wave.getHeight() / 2), juce::Justification::centredBottom);
+        g.setColour (warning.withAlpha (0.8f));
+        g.setFont (11.0f);
+        g.drawText (juce::File (loadedPath).getFileName(), wave.withTrimmedTop (wave.getHeight() / 2).reduced (4, 0),
+                    juce::Justification::centredTop, true);
+    }
     else
     {
         g.setColour (juce::Colours::white.withAlpha (0.6f));
@@ -332,7 +347,7 @@ void PadComponent::filesDropped (const juce::StringArray& files, int, int)
         const juce::File file (f);
         if (file.hasFileExtension ("wav;mp3;aif;aiff"))
         {
-            processor.setPadSample (pad, file);   // triggers a state refresh
+            processor.requestPadSample (pad, file);   // decodes in the background, then refreshes
             break;
         }
     }
