@@ -1,6 +1,12 @@
-# MOSAIC
+<div align="center">
+  <img src="MOSAIC_logo.png" alt="MOSAIC" width="120"/>
+  <h1>MOSAIC</h1>
+  <p><b>A dynamic modular sampler plugin: map any hardware pad controller, drop in samples, and play.</b></p>
+</div>
 
-**A dynamic modular sampler plugin — map any hardware pad controller, drop in samples, and play.**
+<div align="center">
+  <img src="MOSAIC_screenshot.png" alt="MOSAIC" width="800"/>
+</div>
 
 MOSAIC turns your Launchpad, LPD8 or any MIDI pad grid into a colour-coded, fully
 modular sampler. Build a grid of up to 8×8 pads, drag a sample onto each, pick how
@@ -26,16 +32,21 @@ Formats: **VST3**, **AU**, **Standalone** · Windows & macOS (universal) · Linu
 - **MIDI learn** — map a note to each pad; map hardware CC knobs to the inspector controls.
 - **Hardware LED feedback** — lights your controller's pads in their assigned colours, and keeps looping pads lit.
 - **Multi-select & bulk edit**, **custom pad colours**, **playback cursor**, **"follow last played"**, and a **preset** system.
+- **Missing samples are never lost silently.** If a project refers to samples you have moved, their pads show
+  MISSING and keep the path; Edit → *Relink missing samples* finds them in a folder you choose.
+- **Responsive:** dropped samples decode in the background, so the window never freezes.
 
 ## Download
 
-Pre-built installers are produced by CI for every release:
-- **Releases:** grab the `MOSAIC-Windows.zip` / `MOSAIC-macOS.zip` / `MOSAIC-Linux.zip` from the [Releases](../../releases) page.
-- **Latest builds:** the artifacts attached to each run under the [Actions](../../actions) tab.
+Grab the zip for your system from the [Releases](../../releases) page:
+`MOSAIC-<version>-Windows-x64.zip`, `MOSAIC-<version>-macOS.zip` (universal) or `MOSAIC-<version>-Linux-x64.zip`.
+Each contains the plugin, the Standalone app and a README with the install steps.
 
 ### Installing
 - **Windows:** copy `MOSAIC.vst3` to `C:\Program Files\Common Files\VST3`.
-- **macOS:** copy `MOSAIC.vst3` to `~/Library/Audio/Plug-Ins/VST3` and `MOSAIC.component` to `~/Library/Audio/Plug-Ins/Components`.
+- **macOS:** copy `MOSAIC.vst3` to `/Library/Audio/Plug-Ins/VST3` and `MOSAIC.component` to `/Library/Audio/Plug-Ins/Components`.
+  The builds are not notarised; the README in the zip has the one Terminal command that unblocks them.
+- **Linux:** run `./install.sh` from the unzipped folder.
 - Or just run the **Standalone** app.
 
 ## Build from source
@@ -46,6 +57,18 @@ cmake --build build --config Release --parallel
 ```
 
 JUCE and Signalsmith Stretch are fetched automatically by CMake (internet required on the first configure).
+Pass `-DJUCE_DIR=/path/to/JUCE` to use a local JUCE checkout instead. Useful options:
+
+| Option | Default | |
+|---|---|---|
+| `MOSAIC_TESTS` | ON | Builds `MOSAICTests` (missing-sample handling and relinking) |
+| `MOSAIC_LTO` | ON | Link-time optimisation; turn off for faster development builds |
+| `MOSAIC_SNAPSHOT` | OFF | Builds `MOSAIC_snapshot`, which renders the editor to PNG |
+
+### Releasing
+The **Build** workflow builds Windows, macOS and Linux, runs the unit tests, pluginval and auval, and packages
+a zip per platform. Run it from the Actions tab, or push a `v*` tag to also publish a GitHub Release with the
+zips and the matching section of `packaging/CHANGELOG.txt`.
 
 ## Licensing
 
