@@ -266,9 +266,19 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
         m.addSectionHeader (juce::String ((int) selectedPads.size()) + " pad(s) selected");
         m.addItem (1, "Set colour...");
         m.addItem (2, "Clear sample(s)");
+        if (const int missing = processor.getNumMissingSamples(); missing > 0)
+        {
+            m.addSeparator();
+            m.addItem (3, "Relink missing samples (" + juce::String (missing) + ")...");
+        }
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&bulkMenuButton),
                          [this] (int r)
         {
+            if (r == 3)
+            {
+                relinkMissingSamples();
+                return;
+            }
             if (r == 1)
             {
                 auto sel = std::make_unique<BulkColourSelector> ([this] (juce::Colour c) { setColourForSelection (c); });
@@ -589,6 +599,25 @@ void MosaicEditor::setColourForSelection (juce::Colour c)
 {
     for (int pad : selectedPads)
         processor.setPadColour (pad, c);
+}
+
+void MosaicEditor::relinkMissingSamples()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Choose a folder that contains the missing samples",
+                    juce::File::getSpecialLocation (juce::File::userMusicDirectory));
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+        [this] (const juce::FileChooser& fc)
+        {
+            const auto folder = fc.getResult();
+            if (! folder.isDirectory())
+                return;
+
+            const int before = processor.getNumMissingSamples();
+            const int found  = processor.relinkMissingSamples (folder);
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Relink samples",
+                "Found " + juce::String (found) + " of " + juce::String (before) + " missing samples in "
+                    + folder.getFileName() + ".", "OK", this);
+        });
 }
 
 void MosaicEditor::clearSelectionPads()

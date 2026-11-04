@@ -66,6 +66,7 @@ private:
     void mirrorToSelection (int role, double value);                // bulk-edit broadcast
     void setColourForSelection (juce::Colour c);
     void clearSelectionPads();
+    void relinkMissingSamples();                 // asks for a folder, then searches it
 
     //==========================================================================
     using SliderAttachment  = juce::AudioProcessorValueTreeState::SliderAttachment;
