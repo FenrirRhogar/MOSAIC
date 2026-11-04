@@ -25,14 +25,23 @@ public:
 
     int  getPadIndex() const noexcept { return index; }
 
-    // Called on the message thread while the Synthesiser lock is held.
-    void setSample (juce::AudioBuffer<float>&& newData, double sr) noexcept
+    // Called on the message thread while the Synthesiser lock is held. Both return the
+    // previous buffer, so the caller can free it after releasing the lock.
+    juce::AudioBuffer<float> setSample (juce::AudioBuffer<float>&& newData, double sr) noexcept
     {
+        auto previous = std::move (data);
         data = std::move (newData);
         sourceSampleRate = sr;
+        return previous;
     }
 
-    void clearSample() noexcept { data.setSize (0, 0); sourceSampleRate = 44100.0; }
+    juce::AudioBuffer<float> clearSample() noexcept
+    {
+        auto previous = std::move (data);
+        data = juce::AudioBuffer<float>();
+        sourceSampleRate = 44100.0;
+        return previous;
+    }
 
     const juce::AudioBuffer<float>& getData()          const noexcept { return data; }
     double                          getSourceRate()    const noexcept { return sourceSampleRate; }

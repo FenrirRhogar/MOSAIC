@@ -686,11 +686,12 @@ void SamplerEngine::loadSample (int padIndex, juce::AudioBuffer<float>&& data, d
     if (padIndex < 0 || padIndex >= Config::maxPads || padSounds[padIndex] == nullptr)
         return;
 
-    // Swap the buffer under the render lock: the (rare) allocation of the new
-    // buffer and the free of the old one both happen on this message thread.
+    // Swap under the render lock, but free the previous buffer only after releasing it:
+    // freeing a long sample can take a while and the audio thread waits on this lock.
+    juce::AudioBuffer<float> previous;
     {
         const juce::ScopedLock sl (synth.getRenderLock());
-        padSounds[padIndex]->setSample (std::move (data), sr);
+        previous = padSounds[padIndex]->setSample (std::move (data), sr);
     }
     sampleLoaded[padIndex].store (true);
 }
@@ -700,9 +701,10 @@ void SamplerEngine::clearSample (int padIndex)
     if (padIndex < 0 || padIndex >= Config::maxPads || padSounds[padIndex] == nullptr)
         return;
 
+    juce::AudioBuffer<float> previous;   // freed after the lock is released
     {
         const juce::ScopedLock sl (synth.getRenderLock());
-        padSounds[padIndex]->clearSample();
+        previous = padSounds[padIndex]->clearSample();
     }
     sampleLoaded[padIndex].store (false);
 }
