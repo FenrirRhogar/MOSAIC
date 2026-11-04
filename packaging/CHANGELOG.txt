@@ -1,0 +1,15 @@
+MOSAIC  -  CHANGELOG
+
+1.1.0
+- Dropping a sample onto a pad no longer freezes the window: files are decoded in the background,
+  and if you drop several in a row the last one wins.
+- Replacing a sample no longer holds up audio while the old one is freed.
+- Missing samples: when a project or preset refers to a file that has moved, its pad now shows
+  MISSING with the file name instead of silently going blank, and the path is kept when you save.
+  Edit > "Relink missing samples" finds them in a folder you choose.
+- Fixed: switch parameters could restore with an in-between value after a host restored a session.
+- New look, with the Mannaz mark.
+- Every build passes unit tests and pluginval at its strictest level; the AU also passes Apple's auval.
+
+1.0.0
+- First release.
