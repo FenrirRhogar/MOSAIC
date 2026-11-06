@@ -454,6 +454,8 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     for (int i = 0; i < Config::numLfos; ++i)
         setupLfoStrip (i);
 
+    addAndMakeVisible (updateBadge);
+
     processor.addChangeListener (this);
 
     // The children were built before this editor's look and feel applied to them, so their
@@ -856,9 +858,6 @@ void MosaicEditor::paintBackground (juce::Graphics& g)
     const auto footer = bounds.withTop (bounds.getBottom() - 22.0f);
     g.setColour (Mosaic::textDim.withAlpha (0.8f));
     g.drawText ("FENRIKOS", footer.withTrimmedRight (20.0f), juce::Justification::centredRight);
-    g.setColour (Mosaic::textDim.withAlpha (0.45f));
-    g.drawText ("MOSAIC " + juce::String (JucePlugin_VersionString), footer.withTrimmedLeft (20.0f),
-                juce::Justification::centredLeft);
 }
 
 void MosaicEditor::resized()
@@ -894,6 +893,7 @@ void MosaicEditor::resized()
         followButton.setBounds (left.removeFromLeft (150));
     }
 
+    updateBadge.setBounds (20, getHeight() - 22, getWidth() / 2, 22);
     area.removeFromBottom (14);   // footer
 
     // LFO panel (very bottom) + inspector panel + grid panel (middle).

@@ -5,6 +5,7 @@
 #include "PluginProcessor.h"
 #include "PadComponent.h"
 #include "Theme.h"
+#include "UpdateCheck.h"
 
 //==============================================================================
 /*  MOSAIC colour palette + custom look-and-feel. */
@@ -170,6 +171,11 @@ private:
     juce::Rectangle<int> lfoPanel;
 
     std::atomic<bool> gridDirty { true };
+
+    // "MOSAIC 1.1.0" in the footer, or "UPDATE ... AVAILABLE" (UpdateCheck.h).
+    fenrikos::UpdateBadge updateBadge { "MOSAIC " + juce::String (JucePlugin_VersionString),
+                                        juce::FontOptions (10.0f, juce::Font::bold).withKerningFactor (0.25f),
+                                        Mosaic::textDim.withAlpha (0.45f), Mosaic::accent, juce::Justification::centredLeft };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MosaicEditor)
 };

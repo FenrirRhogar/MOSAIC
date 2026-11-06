@@ -85,7 +85,11 @@ target_include_directories(MOSAIC
 target_compile_definitions(MOSAIC
     PUBLIC
         JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0
+        JUCE_USE_CURL=1                       # update check (UpdateCheck.h); on Linux libcurl is
+        JUCE_LOAD_CURL_SYMBOLS_LAZILY=1       # loaded at run time, so it is not a hard dependency
+        FENRIKOS_UPDATE_REPO="MOSAIC"
+        FENRIKOS_UPDATE_NAME="MOSAIC"
+        FENRIKOS_PRODUCT_URL="https://fenrikos.gumroad.com/l/mosaic"
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
         JUCE_STRICT_REFCOUNTEDPOINTER=1
