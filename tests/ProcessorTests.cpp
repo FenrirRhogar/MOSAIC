@@ -81,6 +81,52 @@ public:
 
 static MissingSampleTests missingSampleTests;
 
+class KnobCCTests : public juce::UnitTest
+{
+public:
+    KnobCCTests() : juce::UnitTest ("Knob MIDI CCs", "MOSAIC") {}
+
+    void runTest() override
+    {
+        auto plugin = makeProcessor();
+        plugin->prepareToPlay (48000.0, 256);
+        juce::AudioBuffer<float> buffer (plugin->getTotalNumOutputChannels(), 256);
+
+        const auto sendCC = [&] (int cc, int value)
+        {
+            juce::MidiBuffer midi;
+            midi.addEvent (juce::MidiMessage::controllerEvent (1, cc, value), 0);
+            buffer.clear();
+            plugin->processBlock (buffer, midi);
+        };
+        const auto learn = [&] (int role, int cc)
+        {
+            plugin->startKnobLearn (role);
+            sendCC (cc, 0);
+        };
+        auto& apvts = plugin->getAPVTS();
+        const auto value = [&] (const juce::String& id) { return apvts.getParameter (id)->getValue(); };
+
+        beginTest ("The Grain knob learns a CC and the CC drives it");
+        learn (ParamID::roleGrain, 21);
+        expectEquals (plugin->getCCForKnobRole (ParamID::roleGrain), 21);
+        sendCC (21, 127);
+        expectWithinAbsoluteError (value (ParamID::grainSize (0)), 1.0f, 1.0e-4f);
+
+        beginTest ("A CC cannot push Start past End, or End before Start");
+        learn (ParamID::roleStart, 20);
+        learn (ParamID::roleEnd, 22);
+        sendCC (22, 38);   // End at 0.3
+        sendCC (20, 127);
+        expect (value (ParamID::start (0)) < value (ParamID::end (0)));
+        sendCC (20, 64);   // Start at 0.5 is past End too
+        sendCC (22, 0);
+        expect (value (ParamID::end (0)) > value (ParamID::start (0)));
+    }
+};
+
+static KnobCCTests knobCCTests;
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juce;

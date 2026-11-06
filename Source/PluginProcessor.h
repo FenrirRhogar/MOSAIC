@@ -75,6 +75,7 @@ public:
     /// Returns how many were found.
     int           relinkMissingSamples (const juce::File& folder);
     void          clearPad      (int padIndex);
+    static constexpr float minTrimGap = 0.001f;   // smallest Start-to-End distance the knobs and CCs allow
     void          setPadColour  (int padIndex, juce::Colour colour);
     void          setPadOutputBus (int padIndex, int bus);
     void          startMidiLearn (int padIndex) noexcept { midiLearnTarget.store (padIndex); sendChangeMessage(); }

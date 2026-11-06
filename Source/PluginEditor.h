@@ -80,6 +80,8 @@ private:
     void mirrorToSelection (int role, double value);                // bulk-edit broadcast
     void setColourForSelection (juce::Colour c);
     void clearSelectionPads();
+    void refreshOutputMenu();                    // marks outputs the host has not switched on
+    int  enabledOutputs = -1;                    // bit per output bus, as last shown
     void relinkMissingSamples();                 // asks for a folder, then searches it
 
     //==========================================================================
@@ -158,8 +160,8 @@ private:
     juce::Label   inspectorTitle;
     LabelledKnob  volumeKnob, panKnob, pitchKnob, attackKnob, releaseKnob, speedKnob;
     LabelledKnob  startKnob, endKnob;
-    LabelledKnob  grainKnob;                     // Granular grain size (not CC-learnable)
-    std::array<LabelledKnob*, 8> allKnobs {};    // role knobs only
+    LabelledKnob  grainKnob;                     // Granular grain size
+    std::array<LabelledKnob*, ParamID::numRoles> allKnobs {};
 
     juce::ComboBox modeBox, pitchModeBox, outBusBox;
     juce::Label    modeLabel, pitchModeLabel, outBusLabel;

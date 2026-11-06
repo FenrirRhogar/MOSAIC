@@ -66,6 +66,7 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp   (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;   // load a sample with a file picker
 
     // FileDragAndDropTarget
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
@@ -82,6 +83,10 @@ private:
     int   handleHitTest (juce::Point<int> pos) const;   // 0=none, 1=start, 2=end
 
     void openColourSelector();
+    void showPadMenu();
+    // File picker for the pad's sample. Dropping files does not work on Linux Wayland desktops
+    // (JUCE windows run under XWayland and the drop is lost), so this is the way in there.
+    void chooseSample();
     void toggleMidiLearn();
 
     MosaicAudioProcessor& processor;
@@ -99,6 +104,8 @@ private:
     float playPos    = 0.0f;
     bool  fileHover  = false;
     int  draggingHandle = 0;          // 0=none, 1=start, 2=end
+
+    std::unique_ptr<juce::FileChooser> chooser;
 
     PadTriggerButton triggerButton;
     juce::TextButton learnButton { "L" };

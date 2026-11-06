@@ -218,9 +218,18 @@ void MosaicAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         else
         {
             const int role = ccToRole[cc].load();
+            const int pad  = activePad.load();
             if (role >= 0)
-                if (auto* p = roleParams[role][activePad.load()])
-                    p->setValueNotifyingHost (val);
+                if (auto* p = roleParams[role][pad])
+                {
+                    // Start stays before End (both are 0-1, so normalised values compare directly).
+                    float v = val;
+                    if (role == ParamID::roleStart)
+                        v = juce::jmin (v, roleParams[ParamID::roleEnd][pad]->getValue() - minTrimGap);
+                    else if (role == ParamID::roleEnd)
+                        v = juce::jmax (v, roleParams[ParamID::roleStart][pad]->getValue() + minTrimGap);
+                    p->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, v));
+                }
         }
     }
 
@@ -641,8 +650,8 @@ void MosaicAudioProcessor::rebuildCCMapFromTree()
     for (int c = 0; c < 128; ++c)
     {
         const auto id = ccPropForNumber (c);
-        if (ccMapTree.hasProperty (id))
-            ccToRole[c].store ((int) ccMapTree.getProperty (id));
+        if (const int role = ccMapTree.getProperty (id, -1); juce::isPositiveAndBelow (role, (int) ParamID::numRoles))
+            ccToRole[c].store (role);
     }
 }
 

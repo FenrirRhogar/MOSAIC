@@ -276,24 +276,13 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     addKnob (startKnob,    "Start",   ParamID::roleStart);
     addKnob (endKnob,      "End",     ParamID::roleEnd);
 
+    addKnob (grainKnob,    "Grain",   ParamID::roleGrain);   // Granular pitch mode only
+
     allKnobs = { &volumeKnob, &panKnob, &pitchKnob, &attackKnob,
-                 &releaseKnob, &speedKnob, &startKnob, &endKnob };
+                 &releaseKnob, &speedKnob, &startKnob, &endKnob, &grainKnob };
 
     for (auto* k : allKnobs)
         k->slider.onPopupMenu = [this, k] { showKnobLearnMenu (*k); };
-
-    // Grain knob (Granular pitch mode only) — not a CC role.
-    addKnob (grainKnob, "Grain", -1);
-    grainKnob.slider.onValueChange = [this]
-    {
-        if (suppressMirror || selectedPads.size() <= 1) return;
-        auto& apvts = processor.getAPVTS();
-        const double v = grainKnob.slider.getValue();
-        for (int pad : selectedPads)
-            if (pad != selectedPad)
-                if (auto* p = apvts.getParameter (ParamID::grainSize (pad)))
-                    p->setValueNotifyingHost (p->convertTo0to1 ((float) v));
-    };
 
     auto setupCombo = [this] (juce::ComboBox& c, juce::Label& l, const juce::String& name)
     {
@@ -497,7 +486,16 @@ void MosaicEditor::addKnob (LabelledKnob& k, const juce::String& name, int role)
     addAndMakeVisible (k.label);
 
     // Bulk edit: turning a knob writes the value to every other selected pad.
-    k.slider.onValueChange = [this, &k] { mirrorToSelection (k.role, k.slider.getValue()); };
+    k.slider.onValueChange = [this, &k]
+    {
+        // Start stays before End: the knob stops at the other one instead of crossing it.
+        const auto gap = (double) MosaicAudioProcessor::minTrimGap;
+        if (&k == &startKnob && startKnob.slider.getValue() > endKnob.slider.getValue() - gap)
+            return startKnob.slider.setValue (endKnob.slider.getValue() - gap);
+        if (&k == &endKnob && endKnob.slider.getValue() < startKnob.slider.getValue() + gap)
+            return endKnob.slider.setValue (startKnob.slider.getValue() + gap);
+        mirrorToSelection (k.role, k.slider.getValue());
+    };
 }
 
 void MosaicEditor::showKnobLearnMenu (LabelledKnob& k)
@@ -670,14 +668,12 @@ void MosaicEditor::applySelection()
 
     for (auto* k : allKnobs)
         k->attachment.reset();
-    grainKnob.attachment.reset();
     modeAttachment.reset();
     pitchModeAttachment.reset();
 
     for (auto* k : allKnobs)
         k->attachment = std::make_unique<SliderAttachment> (apvts, ParamID::forRole (k->role, selectedPad), k->slider);
 
-    grainKnob.attachment = std::make_unique<SliderAttachment> (apvts, ParamID::grainSize (selectedPad), grainKnob.slider);
     modeAttachment       = std::make_unique<ComboAttachment> (apvts, ParamID::playMode (selectedPad), modeBox);
     pitchModeAttachment  = std::make_unique<ComboAttachment> (apvts, ParamID::pitchMode (selectedPad), pitchModeBox);
     outBusBox.setSelectedId (processor.getPadOutputBus (selectedPad) + 1, juce::dontSendNotification);
@@ -733,10 +729,34 @@ void MosaicEditor::relinkMissingSamples()
         });
 }
 
+void MosaicEditor::refreshOutputMenu()
+{
+    int mask = 0;
+    for (int b = 0; b < Config::numOutputBuses; ++b)
+        if (auto* bus = processor.getBus (false, b); bus != nullptr && bus->isEnabled())
+            mask |= 1 << b;
+    if (mask == enabledOutputs)
+        return;
+    enabledOutputs = mask;
+
+    // A pad sent to an output the host has not switched on plays on Out 1-2 instead; say so.
+    for (int b = 1; b < Config::numOutputBuses; ++b)
+    {
+        const auto name = "Out " + juce::String (b * 2 + 1) + "-" + juce::String (b * 2 + 2);
+        outBusBox.changeItemText (b + 1, (mask & (1 << b)) != 0 ? name : name + "  (not active: plays on 1-2)");
+    }
+    outBusBox.setTooltip ("Which output the pad plays on. Outputs 3-16 must be switched on in your host "
+                          "(e.g. REAPER: the plugin's multichannel outputs); the Standalone app only has 1-2.");
+}
+
 void MosaicEditor::clearSelectionPads()
 {
     for (int pad : selectedPads)
+    {
         processor.clearPad (pad);
+        if (juce::isPositiveAndBelow (pad, pads.size()))
+            pads[pad]->refreshFromState();
+    }
 }
 
 //==============================================================================
@@ -783,6 +803,7 @@ void MosaicEditor::timerCallback()
             pads[pad]->repaint();
 
     updateKnobDecorations();
+    refreshOutputMenu();
 }
 
 void MosaicEditor::changeListenerCallback (juce::ChangeBroadcaster*)

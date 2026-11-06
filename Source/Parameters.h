@@ -90,9 +90,10 @@ namespace ParamID
     inline juce::String grainSize(int p) { return "grain_"    + juce::String (p); }
 
     // Inspector-knob "roles". A MIDI-CC mapping is stored per role (not per pad),
-    // so one learned knob drives whichever pad is currently selected.
+    // so one learned knob drives whichever pad is currently selected. Saved mappings
+    // store the role number, so new roles go at the end.
     enum KnobRole { roleGain = 0, rolePan, rolePitch, roleAttack,
-                    roleRelease, roleSpeed, roleStart, roleEnd, numRoles };
+                    roleRelease, roleSpeed, roleStart, roleEnd, roleGrain, numRoles };
 
     inline juce::String forRole (int role, int p)
     {
@@ -106,6 +107,7 @@ namespace ParamID
             case roleSpeed:   return speed (p);
             case roleStart:   return start (p);
             case roleEnd:     return end (p);
+            case roleGrain:   return grainSize (p);
             default:          return {};
         }
     }

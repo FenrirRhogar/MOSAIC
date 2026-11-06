@@ -236,6 +236,15 @@ void PadComponent::paint (juce::Graphics& g)
             g.setColour (juce::Colours::white.withAlpha (0.25f));
             g.fillEllipse (cx - 3.0f, (float) wave.getY() - 1.0f, 6.0f, 6.0f);
         }
+
+        // The sample's name, on a dark strip along the bottom of the waveform.
+        const auto nameStrip = wave.withTop (wave.getBottom() - 16).toFloat();
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.fillRect (nameStrip);
+        g.setColour (juce::Colours::white.withAlpha (0.85f));
+        g.setFont (juce::FontOptions (11.0f));
+        g.drawText (juce::File (loadedPath).getFileNameWithoutExtension(), nameStrip.reduced (5.0f, 0.0f),
+                    juce::Justification::centredLeft, true);
     }
     else if (processor.isPadSampleMissing (pad))
     {
@@ -256,7 +265,7 @@ void PadComponent::paint (juce::Graphics& g)
     {
         g.setColour (juce::Colours::white.withAlpha (0.6f));
         g.setFont (12.0f);
-        g.drawText ("drop .wav / .mp3 / .aif", wave, juce::Justification::centred);
+        g.drawText ("double-click or drop a sample", wave, juce::Justification::centred);
     }
 
     // Header: pad number + mode + mapped note.
@@ -301,7 +310,50 @@ void PadComponent::mouseDown (const juce::MouseEvent& e)
     // Ctrl/Cmd and Shift extend the selection for bulk editing.
     if (onSelected) onSelected (pad, e.mods);
 
+    if (e.mods.isPopupMenu())
+    {
+        showPadMenu();
+        return;
+    }
     draggingHandle = handleHitTest (e.getPosition());
+}
+
+void PadComponent::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    if (! e.mods.isPopupMenu() && handleHitTest (e.getPosition()) == 0)
+        chooseSample();
+}
+
+void PadComponent::showPadMenu()
+{
+    juce::PopupMenu m;
+    m.addSectionHeader ("Pad " + juce::String (pad + 1));
+    m.addItem (1, "Load sample...");
+    m.addItem (2, "Clear", processor.getPadFilePath (pad).isNotEmpty());
+
+    juce::Component::SafePointer<PadComponent> safe (this);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [safe] (int result)
+    {
+        if (safe == nullptr) return;
+        if (result == 1)      safe->chooseSample();
+        else if (result == 2) { safe->processor.clearPad (safe->pad); safe->refreshFromState(); }
+    });
+}
+
+void PadComponent::chooseSample()
+{
+    const juce::File current (processor.getPadFilePath (pad));
+    chooser = std::make_unique<juce::FileChooser> ("Sample for pad " + juce::String (pad + 1),
+                                                   current.existsAsFile() ? current.getParentDirectory()
+                                                                          : juce::File::getSpecialLocation (juce::File::userMusicDirectory),
+                                                   "*.wav;*.mp3;*.aif;*.aiff");
+    juce::Component::SafePointer<PadComponent> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [safe] (const juce::FileChooser& fc)
+        {
+            if (safe != nullptr && fc.getResult().existsAsFile())
+                safe->processor.requestPadSample (safe->pad, fc.getResult());   // decodes in the background
+        });
 }
 
 void PadComponent::mouseDrag (const juce::MouseEvent& e)
@@ -314,9 +366,9 @@ void PadComponent::mouseDrag (const juce::MouseEvent& e)
                                      (float) (e.position.x - wave.getX()) / (float) wave.getWidth());
 
     if (draggingHandle == 1)
-        setParam (ParamID::start (pad), juce::jmin (norm, paramValue (ParamID::end (pad)) - 0.001f));
+        setParam (ParamID::start (pad), juce::jmin (norm, paramValue (ParamID::end (pad)) - MosaicAudioProcessor::minTrimGap));
     else
-        setParam (ParamID::end (pad),   juce::jmax (norm, paramValue (ParamID::start (pad)) + 0.001f));
+        setParam (ParamID::end (pad),   juce::jmax (norm, paramValue (ParamID::start (pad)) + MosaicAudioProcessor::minTrimGap));
 
     repaint();
 }

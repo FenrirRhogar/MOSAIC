@@ -272,8 +272,10 @@ public:
     float pan       (int p) const noexcept { return load (panP,     p, 0.0f); }
     float pitch     (int p) const noexcept { return load (pitchP,   p, 0.0f); }
     float speed     (int p) const noexcept { return load (speedP,   p, 1.0f); }
-    float startNorm (int p) const noexcept { return load (startP,   p, 0.0f); }
-    float endNorm   (int p) const noexcept { return load (endP,     p, 1.0f); }
+    // Ordered, so a host or CC that sets Start past End plays the region between them instead
+    // of running from the greyed-out area.
+    float startNorm (int p) const noexcept { return juce::jmin (load (startP, p, 0.0f), load (endP, p, 1.0f)); }
+    float endNorm   (int p) const noexcept { return juce::jmax (load (startP, p, 0.0f), load (endP, p, 1.0f)); }
     float attackSec (int p) const noexcept { return load (attackP,  p, 1.0f)   * 0.001f; }
     float releaseSec(int p) const noexcept { return load (releaseP, p, 40.0f)  * 0.001f; }
     int   playMode  (int p) const noexcept { return (int) load (modeP, p, (float) Config::modeLatching); }

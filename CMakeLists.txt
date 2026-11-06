@@ -85,6 +85,7 @@ target_include_directories(MOSAIC
 target_compile_definitions(MOSAIC
     PUBLIC
         JUCE_WEB_BROWSER=0
+        JUCE_JACK=1                           # Standalone on Linux: JACK / PipeWire-JACK for low latency (loaded at run time)
         JUCE_USE_CURL=1                       # update check (UpdateCheck.h); on Linux libcurl is
         JUCE_LOAD_CURL_SYMBOLS_LAZILY=1       # loaded at run time, so it is not a hard dependency
         FENRIKOS_UPDATE_REPO="MOSAIC"
