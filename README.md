@@ -20,7 +20,7 @@ Formats: **VST3**, **AU**, **Standalone** · Windows & macOS (universal) · Linu
 ## Features
 
 - **Dynamic pad grid** — resize from 1×1 up to 8×8; pads reflow automatically.
-- **Drag & drop** `.wav` / `.mp3` / `.aif`, with waveform display and visual trim.
+- **Drag & drop** `.wav` / `.mp3` / `.aif` (or double-click a pad to pick one), with waveform display, visual trim and the sample name on the pad.
 - **Three trigger modes per pad** — Momentary (gate), Latching (one-shot), Looping (tap to toggle).
 - **Three pitch/time engines per pad:**
   - **Repitch** — classic tape/varispeed, pristine.

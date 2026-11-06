@@ -1,6 +1,15 @@
 MOSAIC  -  CHANGELOG
 
 1.1.1
+- Load samples without drag and drop: double-click a pad, or right-click it for Load sample /
+  Clear. Dropping files does not work on Linux Wayland desktops, so this is the way in there.
+- Pads show their sample's name.
+- Fixed: the Start and End knobs (and their MIDI CCs) could cross, so the pad played from the
+  greyed-out part of the waveform. They now stop at each other.
+- The Grain knob can learn a MIDI CC, like the other knobs.
+- The Output menu marks outputs your host has not switched on ("not active: plays on 1-2"),
+  instead of silently playing them on Out 1-2.
+- Linux Standalone: JACK support (PipeWire's JACK works too), for much lower latency than ALSA.
 - Update notice: the footer shows "UPDATE x.y.z AVAILABLE" when a newer version is out. Click it for
   the download page, or to switch the check off. It asks GitHub at most once a day and sends nothing
   about you or your sessions.
