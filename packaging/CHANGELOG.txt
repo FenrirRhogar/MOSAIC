@@ -1,5 +1,11 @@
 MOSAIC  -  CHANGELOG
 
+1.1.1
+- Update notice: the footer shows "UPDATE x.y.z AVAILABLE" when a newer version is out. Click it for
+  the download page, or to switch the check off. It asks GitHub at most once a day and sends nothing
+  about you or your sessions.
+- macOS builds come from a newer build machine (macOS 15).
+
 1.1.0
 - Dropping a sample onto a pad no longer freezes the window: files are decoded in the background,
   and if you drop several in a row the last one wins.
