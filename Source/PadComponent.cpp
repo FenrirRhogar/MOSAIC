@@ -1,4 +1,5 @@
 #include "PadComponent.h"
+#include "RackKit.h"
 #include "PluginProcessor.h"
 
 //==============================================================================
@@ -152,31 +153,34 @@ void PadComponent::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
-    // The pad illuminates in its assigned RGB while sounding (and stays lit for
-    // the whole time a Looping pad is running), and sits dim/unlit otherwise.
-    // The colour identity is preserved when unlit so pads remain distinguishable.
-    juce::Colour bodyCol = playing ? padColour.brighter (0.35f)
-                                   : padColour.withMultipliedBrightness (0.30f)
-                                              .withMultipliedSaturation (0.85f);
-    if (fileHover)
-        bodyCol = bodyCol.brighter (0.2f);
-
-    g.setColour (bodyCol);
-    g.fillRoundedRectangle (bounds, 6.0f);
-
-    // Glow ring while playing.
+    // A backlit silicone pad: the colour shows faintly through the rubber when idle and
+    // floods it while sounding (and the whole time a Looping pad is running).
+    const auto body = bounds.reduced (1.5f);
     if (playing)
     {
-        g.setColour (juce::Colours::white.withAlpha (0.85f));
-        g.drawRoundedRectangle (bounds.reduced (1.5f), 6.0f, 3.0f);
-        g.setColour (padColour.brighter (0.8f).withAlpha (0.5f));
-        g.drawRoundedRectangle (bounds.reduced (3.5f), 5.0f, 2.0f);
+        g.setColour (padColour.withAlpha (0.35f));
+        g.fillRoundedRectangle (bounds, 7.0f);
     }
+    auto rubber = juce::Colour (0xff1e1f22).interpolatedWith (padColour, playing ? 0.6f : 0.17f);
+    if (fileHover)
+        rubber = rubber.brighter (0.25f);
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.fillRoundedRectangle (body.translated (0.0f, 1.5f), 6.0f);
+    g.setGradientFill (juce::ColourGradient (rubber.brighter (0.15f), 0.0f, body.getY(),
+                                             rubber.darker (0.3f), 0.0f, body.getBottom(), false));
+    g.fillRoundedRectangle (body, 6.0f);
+    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.07f), body.getCentreX(), body.getY(),
+                                             juce::Colours::white.withAlpha (0.0f), body.getCentreX(), body.getCentreY(), false));
+    g.fillRoundedRectangle (body.reduced (2.0f), 5.0f);
+    g.setColour (padColour.withAlpha (playing ? 0.95f : 0.4f));
+    g.drawRoundedRectangle (body.reduced (1.0f), 5.5f, playing ? 1.8f : 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.12f));
+    g.drawLine (body.getX() + 6.0f, body.getY() + 0.6f, body.getRight() - 6.0f, body.getY() + 0.6f, 1.0f);
 
     // Waveform.
     const auto wave = waveformArea();
-    g.setColour (juce::Colours::black.withAlpha (0.35f));
-    g.fillRect (wave);
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillRoundedRectangle (wave.toFloat(), 3.0f);
 
     if (thumbnail.getTotalLength() > 0.0)
     {
@@ -269,12 +273,12 @@ void PadComponent::paint (juce::Graphics& g)
     }
 
     // Header: pad number + mode + mapped note.
-    g.setColour (juce::Colours::white);
-    g.setFont (12.0f);
+    g.setColour (rack::colours::silk);
+    g.setFont (juce::FontOptions (11.0f, juce::Font::bold).withKerningFactor (0.08f));
     const char* modeTag = playModeCached == Config::modeMomentary ? "GATE"
                         : playModeCached == Config::modeLooping    ? "LOOP"
                                                                    : "1SHOT";
-    juce::String header = "Pad " + juce::String (pad + 1) + "  " + modeTag;
+    juce::String header = "PAD " + juce::String (pad + 1) + "  " + modeTag;
     if (learnedNote >= 0)
         header += "  [" + juce::MidiMessage::getMidiNoteName (learnedNote, true, true, 4) + "]";
     else if (learning)

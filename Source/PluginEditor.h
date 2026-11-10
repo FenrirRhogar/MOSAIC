@@ -12,14 +12,14 @@
 namespace Mosaic
 {
     // The fenrikos palette (see Theme.h), with MOSAIC's teal and pink accents.
-    const juce::Colour bg       { 0xff1e2127 };
-    const juce::Colour bgDeep   { 0xff131519 };
-    const juce::Colour panel    { 0xff1a1d22 };
-    const juce::Colour panelHi  { 0xff252930 };
+    const juce::Colour bg       = rack::colours::plateTop;
+    const juce::Colour bgDeep   = rack::colours::plateBottom;
+    const juce::Colour panel    { 0xff1b1d20 };
+    const juce::Colour panelHi  { 0xff2e3035 };
     const juce::Colour accent   { 0xff37d6c2 };   // teal
     const juce::Colour accent2  { 0xffff5e87 };   // pink
-    const juce::Colour text     { 0xffe2e5ea };
-    const juce::Colour textDim  { 0xff868c97 };
+    const juce::Colour text     = rack::colours::silk;
+    const juce::Colour textDim  = rack::colours::silkDim;
 }
 
 class MosaicLookAndFeel : public juce::LookAndFeel_V4
@@ -48,6 +48,9 @@ public:
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool isMouseOver, bool isButtonDown) override;
     void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool isMouseOver, bool isButtonDown) override;
     void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
+
+private:
+    rack::KnobCache knobCache;
 };
 
 //==============================================================================

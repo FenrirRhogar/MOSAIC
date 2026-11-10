@@ -51,51 +51,10 @@ void MosaicLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w
                                           float sliderPos, float startAngle, float endAngle,
                                           juce::Slider& slider)
 {
-    // Fenrikos knob: dished body, glowing value arc, lit indicator.
     const auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
-    const auto centre = bounds.getCentre();
-    const float ringR = juce::jmax (6.0f, juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 4.0f);
-    const float r     = ringR - 5.0f;
-    const float angle = startAngle + sliderPos * (endAngle - startAngle);
-    const bool active = slider.isMouseOverOrDragging() && slider.isEnabled();
-    const auto colour = slider.isEnabled() ? Mosaic::accent : Mosaic::textDim;
-
-    juce::Path track;
-    track.addCentredArc (centre.x, centre.y, ringR, ringR, 0.0f, startAngle, endAngle, true);
-    g.setColour (Theme::track);
-    g.strokePath (track, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-    // Controls whose range crosses zero (pan, pitch) light from the centre.
-    const auto range = slider.getRange();
-    const float origin = range.getStart() < 0.0 && range.getEnd() > 0.0
-                             ? (float) slider.valueToProportionOfLength (0.0) : 0.0f;
-    const float originAngle = startAngle + origin * (endAngle - startAngle);
-    if (std::abs (angle - originAngle) > 0.001f)
-    {
-        juce::Path value;
-        value.addCentredArc (centre.x, centre.y, ringR, ringR, 0.0f,
-                             juce::jmin (originAngle, angle), juce::jmax (originAngle, angle), true);
-        Theme::glow (g, value, active ? colour.brighter (0.25f) : colour, 3.0f);
-    }
-
-    const auto body = juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (centre);
-    g.setColour (juce::Colours::black.withAlpha (0.45f));
-    g.fillEllipse (body.translated (0.0f, 2.5f).expanded (1.0f));
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff40444d), body.getCentreX(), body.getY(),
-                                             juce::Colour (0xff1a1c21), body.getCentreX(), body.getBottom(), false));
-    g.fillEllipse (body);
-    const auto face = body.reduced (r * 0.14f);
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff23262c), face.getCentreX(), face.getY(),
-                                             juce::Colour (0xff30343b), face.getCentreX(), face.getBottom(), false));
-    g.fillEllipse (face);
-    g.setColour (juce::Colours::white.withAlpha (active ? 0.12f : 0.06f));
-    g.drawEllipse (body.reduced (0.5f), 1.0f);
-
-    const auto polar = [&] (float radius) { return centre.translated (radius * std::sin (angle), -radius * std::cos (angle)); };
-    juce::Path indicator;
-    indicator.startNewSubPath (polar (r * 0.3f));
-    indicator.lineTo (polar (r * 0.8f));
-    Theme::glow (g, indicator, colour.brighter (0.3f), 2.5f);
+    const float ringR = juce::jmax (12.0f, juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 3.0f);
+    rack::knob (g, knobCache, bounds.getCentre(), ringR, startAngle, endAngle, sliderPos,
+                Mosaic::accent, slider.isEnabled(), slider.isMouseOverOrDragging());
 }
 
 void MosaicLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h,
@@ -108,35 +67,42 @@ void MosaicLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w
         return;
     }
 
+    // Short fader: a recessed slot with a printed scale, and a machined cap with a lit index line.
     const float cy = (float) y + (float) h * 0.5f;
-    const float left = (float) x + 4.0f, right = (float) (x + w) - 4.0f;
-    juce::Path track, value;
-    track.startNewSubPath (left, cy);
-    track.lineTo (right, cy);
-    g.setColour (Theme::track);
-    g.strokePath (track, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    const float left = (float) x + 6.0f, right = (float) (x + w) - 6.0f;
+    const float pos = juce::jlimit (left, right, sliderPos);
+    g.setColour (rack::colours::silk.withAlpha (0.3f));
+    for (int i = 0; i <= 8; ++i)
+    {
+        const float tx = left + (right - left) * (float) i / 8.0f;
+        g.drawLine (tx, cy - 7.0f, tx, cy - (i % 4 == 0 ? 10.0f : 8.5f), 1.0f);
+    }
+    rack::recess (g, { left - 2.0f, cy - 2.0f, right - left + 4.0f, 4.0f }, 2.0f, juce::Colour (0xff050506));
 
-    value.startNewSubPath (left, cy);
-    value.lineTo (juce::jlimit (left, right, sliderPos), cy);
-    Theme::glow (g, value, slider.isEnabled() ? Mosaic::accent : Mosaic::textDim, 3.0f);
-
-    g.setColour (Mosaic::text);
-    g.fillEllipse (juce::Rectangle<float> (10.0f, 10.0f).withCentre ({ juce::jlimit (left, right, sliderPos), cy }));
+    const auto cap = juce::Rectangle<float> (9.0f, juce::jmin (16.0f, (float) h - 2.0f)).withCentre ({ pos, cy });
+    g.setColour (juce::Colours::black.withAlpha (0.55f));
+    g.fillRoundedRectangle (cap.translated (1.0f, 2.0f), 2.0f);
+    g.setGradientFill (juce::ColourGradient (rack::colours::metalLight, cap.getX(), cap.getY(),
+                                             rack::colours::metalDark.darker (0.3f), cap.getX(), cap.getBottom(), false));
+    g.fillRoundedRectangle (cap, 2.0f);
+    g.setColour (slider.isEnabled() ? Mosaic::accent : Mosaic::textDim);
+    g.fillRect (cap.withSizeKeepingCentre (1.5f, cap.getHeight() - 4.0f));
 }
 
 void MosaicLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
                                       int, int, int, int, juce::ComboBox& box)
 {
-    const auto b = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height).reduced (0.5f);
-    const float corner = juce::jmin (8.0f, b.getHeight() * 0.5f);
-    const bool over = box.isMouseOver (true);
-    g.setColour (Theme::glass.brighter (over ? 0.08f : 0.0f));
-    g.fillRoundedRectangle (b, corner);
-    g.setColour (over ? Mosaic::accent.withAlpha (0.5f) : Theme::cardEdge.withAlpha (0.12f));
-    g.drawRoundedRectangle (b, corner, 1.0f);
+    // A small recessed display window.
+    const auto b = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height).reduced (1.5f);
+    rack::recess (g, b, 2.5f, rack::colours::lcd);
+    if (box.isMouseOver (true))
+    {
+        g.setColour (Mosaic::accent.withAlpha (0.06f));
+        g.fillRoundedRectangle (b, 2.5f);
+    }
 
     juce::Path caret;
-    const float cx = b.getRight() - 12.0f, cy = b.getCentreY();
+    const float cx = b.getRight() - 10.0f, cy = b.getCentreY();
     caret.startNewSubPath (cx - 3.5f, cy - 1.5f);
     caret.lineTo (cx, cy + 2.0f);
     caret.lineTo (cx + 3.5f, cy - 1.5f);
@@ -144,13 +110,14 @@ void MosaicLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, 
     g.strokePath (caret, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
-juce::Font MosaicLookAndFeel::getComboBoxFont (juce::ComboBox&)  { return juce::Font (juce::FontOptions (12.5f)); }
+juce::Font MosaicLookAndFeel::getComboBoxFont (juce::ComboBox&)  { return juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 12.0f, juce::Font::bold)); }
 juce::Font MosaicLookAndFeel::getLabelFont     (juce::Label& l)  { return l.getFont(); }
 
 void MosaicLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
 {
     label.setBounds (8, 1, box.getWidth() - 24, box.getHeight() - 2);
     label.setFont (getComboBoxFont (box));
+    label.setColour (juce::Label::textColourId, Mosaic::accent.brighter (0.4f));
 }
 
 juce::Label* MosaicLookAndFeel::createSliderTextBox (juce::Slider& slider)
@@ -171,44 +138,49 @@ juce::Label* MosaicLookAndFeel::createSliderTextBox (juce::Slider& slider)
 void MosaicLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour& backgroundColour,
                                               bool isMouseOver, bool isButtonDown)
 {
-    const auto area = button.getLocalBounds().toFloat().reduced (0.5f);
-    const float corner = juce::jmin (8.0f, area.getHeight() * 0.5f);
-
-    // Buttons given their own colour (pad colour swatches, the learn button while learning) keep it.
-    const auto base = button.isColourSpecified (juce::TextButton::buttonColourId) ? backgroundColour : Theme::button;
-    g.setColour (base.brighter (isButtonDown ? 0.02f : (isMouseOver ? 0.12f : 0.0f)));
-    g.fillRoundedRectangle (area, corner);
-    g.setColour (isMouseOver ? Mosaic::accent.withAlpha (0.45f) : Theme::cardEdge);
-    g.drawRoundedRectangle (area, corner, 1.0f);
+    // Buttons given their own colour (pad colour swatches, the learn button while learning)
+    // are lit caps in that colour; everything else is a machined push button.
+    if (button.isColourSpecified (juce::TextButton::buttonColourId))
+    {
+        const auto area = button.getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.7f));
+        g.fillRoundedRectangle (area.translated (0.0f, 1.0f), 3.0f);
+        g.setGradientFill (juce::ColourGradient (backgroundColour.brighter (isMouseOver ? 0.45f : 0.3f), area.getCentreX(), area.getY(),
+                                                 backgroundColour.darker (0.3f), area.getCentreX(), area.getBottom(), false));
+        g.fillRoundedRectangle (area, 3.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.35f));
+        g.drawLine (area.getX() + 2.0f, area.getY() + 0.7f, area.getRight() - 2.0f, area.getY() + 0.7f, 1.0f);
+        return;
+    }
+    rack::pushButton (g, button.getLocalBounds().toFloat(), isMouseOver, isButtonDown);
 }
 
-void MosaicLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool isMouseOver, bool)
+void MosaicLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool isMouseOver, bool isButtonDown)
 {
-    g.setFont (juce::FontOptions (11.0f, juce::Font::bold).withKerningFactor (0.06f));
-    g.setColour (button.findColour (juce::TextButton::textColourOffId).withAlpha (isMouseOver ? 1.0f : 0.85f));
-    g.drawText (button.getButtonText(), button.getLocalBounds(), juce::Justification::centred, false);
+    auto area = button.getLocalBounds().toFloat();
+    if (isButtonDown)
+        area.translate (0.0f, 1.0f);
+    const bool lit = button.isColourSpecified (juce::TextButton::buttonColourId);
+    g.setFont (juce::FontOptions (10.5f, juce::Font::bold).withKerningFactor (0.12f));
+    g.setColour (lit ? juce::Colour (0xff15130f) : Mosaic::text.withAlpha (isMouseOver ? 1.0f : 0.85f));
+    g.drawText (lit ? button.getButtonText() : button.getButtonText().toUpperCase(), area, juce::Justification::centred, false);
 }
 
-void MosaicLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool isMouseOver, bool)
+void MosaicLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool isMouseOver, bool isButtonDown)
 {
-    // Switches are pills with their label inside, lit in the accent while on.
-    const auto area = button.getLocalBounds().toFloat().reduced (0.5f, 2.0f);
-    const float corner = area.getHeight() * 0.5f;
+    // Switches are latching push buttons with an LED.
     const bool on = button.getToggleState();
+    auto area = button.getLocalBounds().toFloat();
+    rack::pushButton (g, area.reduced (0.0f, 1.0f), isMouseOver, isButtonDown, on);
+    area = area.reduced (1.0f, 2.5f);
+    if (on || isButtonDown)
+        area.translate (0.0f, 1.0f);
+    rack::led (g, { area.getX() + 10.0f, area.getCentreY() }, 2.8f, Mosaic::accent, on);
 
-    g.setColour (on ? Mosaic::accent.withAlpha (0.2f) : Theme::button.brighter (isMouseOver ? 0.1f : 0.0f));
-    g.fillRoundedRectangle (area, corner);
-    g.setColour (on ? Mosaic::accent.withAlpha (isMouseOver ? 1.0f : 0.8f) : Theme::cardEdge);
-    g.drawRoundedRectangle (area, corner, 1.0f);
-
-    const auto dot = juce::Rectangle<float> (6.0f, 6.0f).withCentre ({ area.getX() + 11.0f, area.getCentreY() });
-    g.setColour (on ? Mosaic::accent.brighter (0.4f) : Mosaic::textDim.withAlpha (0.5f));
-    g.fillEllipse (dot);
-
-    g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
-    g.setColour (on ? Mosaic::accent.brighter (0.4f) : Mosaic::textDim);
-    g.drawText (button.getButtonText(), area.withTrimmedLeft (20.0f).withTrimmedRight (6.0f),
-                juce::Justification::centredLeft, true);
+    g.setFont (juce::FontOptions (10.0f, juce::Font::bold).withKerningFactor (0.12f));
+    g.setColour (on ? Mosaic::text : Mosaic::textDim);
+    g.drawText (button.getButtonText().toUpperCase(), area.withTrimmedLeft (18.0f).withTrimmedRight (4.0f),
+                juce::Justification::centred, true);
 }
 
 void MosaicLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
@@ -263,7 +235,7 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     }
 
     // Inspector -------------------------------------------------------------
-    inspectorTitle.setFont (juce::Font (juce::FontOptions (14.0f).withStyle ("Bold")));
+    inspectorTitle.setFont (juce::Font (juce::FontOptions (13.0f, juce::Font::bold).withKerningFactor (0.15f)));
     inspectorTitle.setColour (juce::Label::textColourId, Mosaic::accent);
     addAndMakeVisible (inspectorTitle);
 
@@ -437,7 +409,7 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
 
     // LFO panel ------------------------------------------------------------
     lfoTitle.setText ("MODULATION", juce::dontSendNotification);
-    lfoTitle.setFont (juce::Font (juce::FontOptions (12.0f).withStyle ("Bold")));
+    lfoTitle.setFont (juce::Font (juce::FontOptions (11.5f, juce::Font::bold).withKerningFactor (0.18f)));
     lfoTitle.setColour (juce::Label::textColourId, Mosaic::accent);
     addAndMakeVisible (lfoTitle);
     for (int i = 0; i < Config::numLfos; ++i)
@@ -452,8 +424,8 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     sendLookAndFeelChange();
 
     setResizable (true, true);
-    setResizeLimits (860, 600, 1800, 1300);
-    setSize (980, 800);
+    setResizeLimits (860 + 2 * rack::earWidth, 600, 1800, 1300);
+    setSize (980 + 2 * rack::earWidth, 800);
     rebuildGridLayout();
     selectPad (processor.getActivePad());   // restore selection (survives reopen/minimize)
 
@@ -479,10 +451,10 @@ void MosaicEditor::addKnob (LabelledKnob& k, const juce::String& name, int role)
     k.slider.setTooltip ("Right-click to MIDI-learn a CC");
     addAndMakeVisible (k.slider);
 
-    k.label.setText (name, juce::dontSendNotification);
+    k.label.setText (name.toUpperCase(), juce::dontSendNotification);
     k.label.setJustificationType (juce::Justification::centred);
-    k.label.setFont (juce::Font (juce::FontOptions (11.5f)));
-    k.label.setColour (juce::Label::textColourId, Mosaic::textDim);
+    k.label.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::bold).withKerningFactor (0.14f)));
+    k.label.setColour (juce::Label::textColourId, Mosaic::text);
     addAndMakeVisible (k.label);
 
     // Bulk edit: turning a knob writes the value to every other selected pad.
@@ -847,43 +819,36 @@ void MosaicEditor::paint (juce::Graphics& g)
 void MosaicEditor::paintBackground (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setGradientFill (juce::ColourGradient (Mosaic::bg, 0.0f, 0.0f, Mosaic::bgDeep, 0.0f, bounds.getBottom(), false));
-    g.fillAll();
+    const auto plate = bounds.reduced ((float) rack::earWidth, 0.0f);
+    rack::faceplate (g, bounds);
 
-    // Soft accent glow from the top edge.
-    g.setGradientFill (juce::ColourGradient (Mosaic::accent.withAlpha (0.14f), bounds.getCentreX(), 0.0f,
-                                             Mosaic::accent.withAlpha (0.0f), bounds.getCentreX(), 90.0f, false));
-    g.fillRect (bounds.withHeight (90.0f));
-    g.setColour (Mosaic::accent);
-    g.fillRect (bounds.withHeight (2.0f));
-
-    // Header: Mannaz mark, wordmark and tagline.
-    Theme::fillRune (g, Theme::mannaz ({ 16.0f, 10.0f, 32.0f, 32.0f }));
-    g.setFont (juce::FontOptions (23.0f, juce::Font::bold).withKerningFactor (0.2f));
-    g.setColour (juce::Colours::black.withAlpha (0.35f));
-    g.drawText ("MOSAIC", juce::Rectangle<float> (56.0f, 9.0f, 200.0f, 26.0f), juce::Justification::centredLeft);
-    g.setColour (Mosaic::text);
-    g.drawText ("MOSAIC", juce::Rectangle<float> (56.0f, 8.0f, 200.0f, 26.0f), juce::Justification::centredLeft);
-    g.setFont (juce::FontOptions (11.5f));
+    // Nameplate: Mannaz mark, model name and tagline silkscreened at the top left.
+    const float x = plate.getX();
+    Theme::fillRune (g, Theme::mannaz ({ x + 16.0f, 10.0f, 32.0f, 32.0f }));
+    g.setFont (juce::FontOptions (24.0f, juce::Font::bold).withKerningFactor (0.28f));
+    rack::silk (g, "MOSAIC", { x + 56.0f, 7.0f, 220.0f, 26.0f }, juce::Justification::centredLeft);
+    g.setFont (juce::FontOptions (10.5f).withKerningFactor (0.08f));
     g.setColour (Mosaic::textDim);
-    g.drawText ("Modular pad sampler", juce::Rectangle<float> (57.0f, 33.0f, 240.0f, 14.0f), juce::Justification::centredLeft);
+    g.drawText ("MODULAR PAD SAMPLER", juce::Rectangle<float> (x + 57.0f, 32.0f, 240.0f, 14.0f), juce::Justification::centredLeft);
 
-    g.setColour (Theme::cardEdge);
-    g.fillRect (16.0f, 85.0f, bounds.getWidth() - 32.0f, 1.0f);
+    rack::seam (g, plate.getX() + 16.0f, plate.getRight() - 16.0f, 85.0f);
 
-    for (auto panel : { gridPanel, inspectorPanel, lfoPanel })
+    // The pads sit in a recessed well; the inspector and modulation are silkscreened sections.
+    if (! gridPanel.isEmpty())
+        rack::recess (g, gridPanel.toFloat(), 8.0f, juce::Colour (0xff111214));
+    for (auto panel : { inspectorPanel, lfoPanel })
         if (! panel.isEmpty())
-            Theme::card (g, panel.toFloat(), 12.0f);
+            Theme::card (g, panel.toFloat());
 
-    g.setFont (juce::FontOptions (10.0f, juce::Font::bold).withKerningFactor (0.25f));
-    const auto footer = bounds.withTop (bounds.getBottom() - 22.0f);
-    g.setColour (Mosaic::textDim.withAlpha (0.8f));
+    g.setFont (juce::FontOptions (10.0f, juce::Font::bold).withKerningFactor (0.3f));
+    const auto footer = plate.withTop (bounds.getBottom() - 22.0f);
+    g.setColour (Mosaic::textDim);
     g.drawText ("FENRIKOS", footer.withTrimmedRight (20.0f), juce::Justification::centredRight);
 }
 
 void MosaicEditor::resized()
 {
-    auto area = getLocalBounds();
+    auto area = getLocalBounds().reduced (rack::earWidth, 0);
 
     // Header — two rows: branding + presets, then selection + grid size.
     auto header = area.removeFromTop (86);
@@ -906,15 +871,15 @@ void MosaicEditor::resized()
         rowsSlider.setBounds (ctl.removeFromRight (72));
         rowsLabel.setBounds  (ctl.removeFromRight (36));
 
-        auto left = row2.removeFromLeft (320).withSizeKeepingCentre (320, 24);
+        auto left = row2.removeFromLeft (330).withSizeKeepingCentre (330, 24);
         selectAllButton.setBounds (left.removeFromLeft (44));
         left.removeFromLeft (6);
         bulkMenuButton.setBounds (left.removeFromLeft (62));
         left.removeFromLeft (12);
-        followButton.setBounds (left.removeFromLeft (150));
+        followButton.setBounds (left.removeFromLeft (180));
     }
 
-    updateBadge.setBounds (20, getHeight() - 22, getWidth() / 2, 22);
+    updateBadge.setBounds (rack::earWidth + 20, getHeight() - 22, getWidth() / 2, 22);
     area.removeFromBottom (14);   // footer
 
     // LFO panel (very bottom) + inspector panel + grid panel (middle).

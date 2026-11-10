@@ -1,18 +1,19 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "RackKit.h"
 
-/*  Visual language shared with the other fenrikos plugins: dark graphite cards,
-    hairline edges, glowing accent arcs and the rune mark. */
+/*  Visual language shared with the other fenrikos plugins: a black anodised rack
+    plate with silkscreen legends, machined knobs and the rune mark. */
 namespace Theme
 {
-    const juce::Colour plateTop    { 0xff1e2127 };
-    const juce::Colour plateBottom { 0xff131519 };
-    const juce::Colour cardFill    { 0xff1a1d22 };
-    const juce::Colour cardEdge    { 0x10ffffff };
-    const juce::Colour glass       { 0xff0c0e11 };
-    const juce::Colour track       { 0xff2f333b };
-    const juce::Colour button      { 0xff252930 };
+    const juce::Colour plateTop    = rack::colours::plateTop;
+    const juce::Colour plateBottom = rack::colours::plateBottom;
+    const juce::Colour cardFill    { 0xff222428 };
+    const juce::Colour cardEdge    { 0x14ffffff };
+    const juce::Colour glass       = rack::colours::glass;
+    const juce::Colour track       { 0xff3a3c41 };
+    const juce::Colour button      { 0xff2e3035 };
 
     /// Stroke with a soft bloom, for lit arcs and tracks.
     inline void glow (juce::Graphics& g, const juce::Path& path, juce::Colour colour, float width)
@@ -23,16 +24,10 @@ namespace Theme
         g.strokePath (path, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
-    /// Raised card: soft shadow, slightly lighter top edge and a hairline border.
-    inline void card (juce::Graphics& g, juce::Rectangle<float> area, float corner = 12.0f)
+    /// On the rack plate a panel is a silkscreened outline.
+    inline void card (juce::Graphics& g, juce::Rectangle<float> area, float /*corner*/ = 12.0f, const juce::String& title = {})
     {
-        g.setColour (juce::Colours::black.withAlpha (0.28f));
-        g.fillRoundedRectangle (area.translated (0.0f, 3.0f).expanded (1.0f), corner + 1.0f);
-        g.setGradientFill (juce::ColourGradient (cardFill.brighter (0.07f), area.getTopLeft(),
-                                                 cardFill, area.getBottomLeft(), false));
-        g.fillRoundedRectangle (area, corner);
-        g.setColour (cardEdge);
-        g.drawRoundedRectangle (area.reduced (0.5f), corner, 1.0f);
+        rack::silkBox (g, area, title);
     }
 
     /// The MOSAIC mark: Mannaz, the M rune. Two upright staves whose tops are joined by
