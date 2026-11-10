@@ -461,15 +461,11 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     // value boxes still carry the default style; rebuild them with ours.
     sendLookAndFeelChange();
 
-    // The panel is laid out at its base size and scales as a whole; the size is kept with the session.
-    // Read the saved size first: setting the limits resizes the editor, which would overwrite it.
-    const auto savedScale = juce::jlimit (0.6f, 2.0f, (float) processor.getAPVTS().state.getProperty ("uiScale", 1.0f));
-    scaleReady = false;
-    setResizable (true, true);
-    setResizeLimits (juce::roundToInt (baseWidth * 0.6), juce::roundToInt (baseHeight * 0.6), baseWidth * 2, baseHeight * 2);
-    getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
-    scaleReady = true;
-    setSize (juce::roundToInt ((float) baseWidth * savedScale), juce::roundToInt ((float) baseHeight * savedScale));
+    // SIZE: S / M / L, saved with the session. The grid sets the panel's shape (rebuildGridLayout).
+    sizeSelect.onChange = [this] (int i) { setPanelSize (i); };
+    addAndMakeVisible (sizeSelect);
+    sizeSelect.setSelected (juce::jlimit (0, 2, (int) processor.getAPVTS().state.getProperty ("uiSize", 1)));
+    setSize (baseWidth, baseHeight);
     rebuildGridLayout();
     selectPad (processor.getActivePad());   // restore selection (survives reopen/minimize)
 
@@ -870,7 +866,35 @@ void MosaicEditor::rebuildGridLayout()
     else
         applySelection();
 
-    resized();   // lay the pads out for the new grid
+    // The grid sets the panel's shape; resize to it (or just lay the pads out again).
+    const auto before = getBounds();
+    setPanelSize (sizeSelect.getSelected());
+    if (getBounds() == before)
+        resized();
+}
+
+// Pad cells shrink gently as the grid grows, and the panel grows to hold them.
+void MosaicEditor::updateBaseSize()
+{
+    cellW = visibleCols <= 4 ? 128 : 128 - (visibleCols - 4) * 11;
+    cellH = visibleRows <= 2 ? 104 : juce::roundToInt (104.0f - (float) (visibleRows - 2) * 40.0f / 6.0f);
+    cellGap = (visibleRows > 2 || visibleCols > 4) ? 8 : 14;
+    const int trayW = visibleCols * cellW + (visibleCols - 1) * cellGap + 28;
+    const int trayH = visibleRows * cellH + (visibleRows - 1) * cellGap + 28;
+    const int innerW = juce::jmax (920, trayW + 24 + 276);
+    baseWidth = innerW + 60 + 2 * rackui::earWidth;
+    baseHeight = juce::jmax (706, 400 + trayH) + 24;
+}
+
+// S / M / L: the whole panel at 80, 100 or 125 % of its grid-shaped base size.
+void MosaicEditor::setPanelSize (int index)
+{
+    index = juce::jlimit (0, 2, index);
+    sizeSelect.setSelected (index);
+    processor.getAPVTS().state.setProperty ("uiSize", index, nullptr);
+    updateBaseSize();
+    const auto sc = rackui::sizeScale (index);
+    setSize (juce::roundToInt ((float) baseWidth * sc), juce::roundToInt ((float) baseHeight * sc));
 }
 
 //==============================================================================
@@ -973,6 +997,8 @@ void MosaicEditor::paintBackground (juce::Graphics& g)
         rule (g, (float) strip.shapeSelect.getX(), (float) strip.shapeSelect.getX() + 276.0f, (float) strip.syncRate.getBottom() + 10.0f);
     }
 
+    print (g, "SIZE", { (float) sizeSelect.getX() - 40.0f, (float) sizeSelect.getY(), 34.0f, 14.0f }, Face::textMedium, 8.0f, 0.3f, colour::inkFaint,
+           juce::Justification::centredRight);
     print (g, "fenrikos", { x, bounds.getBottom() - 20.0f, 200.0f, 14.0f }, Face::textMedium, 8.0f, 0.3f, colour::inkFaint,
            juce::Justification::centredLeft);
 }
@@ -982,8 +1008,6 @@ void MosaicEditor::resized()
     if (screenPad == nullptr)
         return;   // still constructing
     uiScale = (float) getWidth() / (float) baseWidth;
-    if (scaleReady)
-        processor.getAPVTS().state.setProperty ("uiScale", uiScale, nullptr);
 
     const int left = rackui::earWidth + 30, right = baseWidth - rackui::earWidth - 30;
 
@@ -993,7 +1017,7 @@ void MosaicEditor::resized()
     saveButton.setBounds (left + 64, 156, 58, 22);
     screenArea = { left + 206 + 32, 24, 440, 172 };
     screenPad->setBounds (screenArea.reduced (9));
-    const int rx = screenArea.getRight() + 32;
+    const int rx = right - 210;
     playSelect.setBounds (rx, 40, right - rx, 18);
     engineSelect.setBounds (rx, 78, right - rx, 18);
     outBusBox.setBounds (rx, 116, 150, 22);
@@ -1003,25 +1027,28 @@ void MosaicEditor::resized()
     followButton.setBounds (rx + 122, 161, 90, 20);
 
     updateBadge.setBounds (right - 300, baseHeight - 20, 300, 14);
+    sizeSelect.setBounds (baseWidth / 2 - 20, baseHeight - 20, 92, 14);
 
     // Knob row for the selected pad(s).
     topRuleY = 212;
     inspectorTitle.setVisible (false);
-    int x = left - 26;
-    for (auto* k : allKnobs)
+    const float slot = (float) (right - left + 52) / (float) allKnobs.size();
+    for (size_t k = 0; k < allKnobs.size(); ++k)
     {
-        const auto s = k->slider.preferredSize();
-        k->slider.setBounds (x, topRuleY + 8, s.x, s.y);
-        x += s.x - 36;
+        const auto s = allKnobs[k]->slider.preferredSize();
+        const int cx = left - 26 + juce::roundToInt (slot * ((float) k + 0.5f));
+        allKnobs[k]->slider.setBounds (cx - s.x / 2, topRuleY + 8, s.x, s.y);
     }
     knobRuleY = topRuleY + 142;
 
     // Pad tray (left) with its grid controls above, LFOs (right).
-    trayArea = { left, knobRuleY + 46, 620, 720 - 30 - (knobRuleY + 46) };
-    rowsLabel.setBounds (left + 330, knobRuleY + 14, 40, 24);
-    rowsSlider.setBounds (left + 370, knobRuleY + 14, 72, 24);
-    colsLabel.setBounds (left + 470, knobRuleY + 14, 40, 24);
-    colsSlider.setBounds (left + 510, knobRuleY + 14, 72, 24);
+    const int trayW = visibleCols * cellW + (visibleCols - 1) * cellGap + 28;
+    trayArea = { left, knobRuleY + 46, juce::jmax (trayW, right - left - 300), baseHeight - 24 - (knobRuleY + 46) };
+    const int tr = trayArea.getRight();
+    rowsLabel.setBounds (tr - 252, knobRuleY + 14, 40, 24);
+    rowsSlider.setBounds (tr - 212, knobRuleY + 14, 72, 24);
+    colsLabel.setBounds (tr - 112, knobRuleY + 14, 40, 24);
+    colsSlider.setBounds (tr - 72, knobRuleY + 14, 72, 24);
 
     const int lx = trayArea.getRight() + 24;
     for (int i = 0; i < Config::numLfos; ++i)
@@ -1030,10 +1057,7 @@ void MosaicEditor::resized()
     // Pads in the tray. The grid reflows from 1x1 to 8x8; pads stay roughly square rather than
     // flattening into strips, and the whole grid is centred in the tray.
     const auto padArea = trayArea.reduced (14);
-    const int gap = (visibleRows > 2 || visibleCols > 4) ? 6 : 14;
-    const int cellH = (padArea.getHeight() - gap * (visibleRows - 1)) / juce::jmax (1, visibleRows);
-    const int cellW = juce::jmin ((padArea.getWidth() - gap * (visibleCols - 1)) / juce::jmax (1, visibleCols),
-                                  juce::roundToInt ((float) cellH * 1.6f));
+    const int gap = cellGap;
     const int gridW = cellW * visibleCols + gap * (visibleCols - 1);
     const int gridH = cellH * visibleRows + gap * (visibleRows - 1);
     const int x0 = padArea.getCentreX() - gridW / 2, y0 = padArea.getCentreY() - gridH / 2;
@@ -1041,7 +1065,7 @@ void MosaicEditor::resized()
     for (int i = 0; i < visibleCount; ++i)
         pads[i]->setBounds (x0 + (i % visibleCols) * (cellW + gap), y0 + (i / visibleCols) * (cellH + gap), cellW, cellH);
 
-    rackui::scaleChildren (*this, uiScale, resizableCorner.get());
+    rackui::scaleChildren (*this, uiScale);
 
     background = juce::Image (juce::Image::RGB, juce::jmax (1, getWidth()), juce::jmax (1, getHeight()), false);
     {
