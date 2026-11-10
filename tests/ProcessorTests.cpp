@@ -127,6 +127,68 @@ public:
 
 static KnobCCTests knobCCTests;
 
+class PresetSplitTests : public juce::UnitTest
+{
+public:
+    PresetSplitTests() : juce::UnitTest ("Kit and controller presets", "MOSAIC") {}
+
+    void runTest() override
+    {
+        const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getChildFile ("MOSAICPresets-" + juce::String::toHexString (juce::Random::getSystemRandom().nextInt64()));
+        root.createDirectory();
+        const auto kitFile = root.getChildFile ("Kit A.mosaic");
+        const auto controllerFile = root.getChildFile ("Pads A.mosaicctl");
+
+        auto plugin = makeProcessor();
+        plugin->prepareToPlay (48000.0, 256);
+        juce::AudioBuffer<float> buffer (plugin->getTotalNumOutputChannels(), 256);
+        const auto learnCC = [&] (int role, int cc)
+        {
+            plugin->startKnobLearn (role);
+            juce::MidiBuffer midi;
+            midi.addEvent (juce::MidiMessage::controllerEvent (1, cc, 0), 0);
+            buffer.clear();
+            plugin->processBlock (buffer, midi);
+            plugin->handleUpdateNowIfNeeded();   // the message-thread half of learning, as in the plugin
+        };
+        auto* gain = plugin->getAPVTS().getParameter (ParamID::gain (0));
+
+        learnCC (ParamID::roleGrain, 21);
+        gain->setValueNotifyingHost (0.3f);
+        expect (plugin->saveKitToFile (kitFile));
+        expect (plugin->saveControllerToFile (controllerFile));
+
+        beginTest ("A kit file carries no controller mapping");
+        const auto kitXml = juce::XmlDocument::parse (kitFile);
+        expect (kitXml != nullptr);
+        if (kitXml != nullptr)
+            if (auto* cc = kitXml->getChildByName ("CCMAP"))
+                expectEquals (cc->getNumAttributes(), 0);
+
+        beginTest ("A controller preset brings the mapping back without touching the sound");
+        plugin->clearControllerMapping();
+        expectEquals (plugin->getCCForKnobRole (ParamID::roleGrain), -1);
+        expect (plugin->loadControllerFromFile (controllerFile));
+        expectEquals (plugin->getCCForKnobRole (ParamID::roleGrain), 21);
+        expectWithinAbsoluteError (gain->getValue(), 0.3f, 1.0e-3f);
+        expectEquals (plugin->getControllerName(), juce::String ("Pads A"));
+
+        beginTest ("Loading a kit restores the sound and keeps the current mapping");
+        gain->setValueNotifyingHost (0.8f);
+        learnCC (ParamID::roleGrain, 30);
+        expect (plugin->loadKitFromFile (kitFile));
+        expectWithinAbsoluteError (plugin->getAPVTS().getParameter (ParamID::gain (0))->getValue(), 0.3f, 1.0e-3f);
+        expectEquals (plugin->getCCForKnobRole (ParamID::roleGrain), 30);
+        expectEquals (plugin->getKitName(), juce::String ("Kit A"));
+        expectEquals (plugin->getControllerName(), juce::String ("Pads A"));
+
+        root.deleteRecursively();
+    }
+};
+
+static PresetSplitTests presetSplitTests;
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juce;

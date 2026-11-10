@@ -148,8 +148,18 @@ private:
     juce::uint32       lastSeenPlayCounter = 0;
     juce::TextButton   selectAllButton { "All" };
     juce::TextButton   bulkMenuButton  { "Edit..." };   // bulk ops on the selection
-    juce::TextButton   saveButton { "Save" }, loadButton { "Load" };
-    juce::Label        presetName;
+    // Two preset windows: the kit (sound) and the controller (MIDI mapping). Click for a menu.
+    class PresetWindow : public juce::Button
+    {
+    public:
+        PresetWindow() : juce::Button ({}) {}
+        void paintButton (juce::Graphics& g, bool over, bool down) override;
+    };
+    PresetWindow kitWindow, controllerWindow;
+    void showKitMenu();
+    void showControllerMenu();
+    void afterKitLoaded();
+    void refreshPresetNames();
     std::unique_ptr<juce::FileChooser> chooser;
 
     // Grid -----------------------------------------------------------------

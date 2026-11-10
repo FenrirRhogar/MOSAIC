@@ -398,51 +398,13 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     addAndMakeVisible (bulkMenuButton);
 
     // Presets -------------------------------------------------------------
-    presetName.setText ("(unsaved)", juce::dontSendNotification);
-    presetName.setJustificationType (juce::Justification::centredRight);
-    presetName.setFont (rackui::font (rackui::Face::mono, 12.5f, 0.06f));
-    presetName.setColour (juce::Label::textColourId, Mosaic::accent.interpolatedWith (juce::Colours::white, 0.45f));
-    presetName.setJustificationType (juce::Justification::centredLeft);
-    addAndMakeVisible (presetName);
-
-    saveButton.setTooltip ("Save a .mosaic preset");
-    saveButton.onClick = [this]
-    {
-        chooser = std::make_unique<juce::FileChooser> ("Save MOSAIC preset",
-                        MosaicAudioProcessor::getPresetsDirectory(), "*.mosaic");
-        chooser->launchAsync (juce::FileBrowserComponent::saveMode
-                            | juce::FileBrowserComponent::warnAboutOverwriting,
-            [this] (const juce::FileChooser& fc)
-            {
-                auto f = fc.getResult();
-                if (f == juce::File()) return;
-                if (! f.hasFileExtension ("mosaic")) f = f.withFileExtension ("mosaic");
-                if (processor.savePresetToFile (f))
-                    presetName.setText (f.getFileNameWithoutExtension(), juce::dontSendNotification);
-            });
-    };
-    addAndMakeVisible (saveButton);
-
-    loadButton.setTooltip ("Load a .mosaic preset");
-    loadButton.onClick = [this]
-    {
-        chooser = std::make_unique<juce::FileChooser> ("Load MOSAIC preset",
-                        MosaicAudioProcessor::getPresetsDirectory(), "*.mosaic");
-        chooser->launchAsync (juce::FileBrowserComponent::openMode
-                            | juce::FileBrowserComponent::canSelectFiles,
-            [this] (const juce::FileChooser& fc)
-            {
-                auto f = fc.getResult();
-                if (f.existsAsFile() && processor.loadPresetFromFile (f))
-                {
-                    presetName.setText (f.getFileNameWithoutExtension(), juce::dontSendNotification);
-                    rebuildGridLayout();
-                    selectPad (processor.getActivePad());
-                    for (auto* pc : pads) pc->refreshFromState();
-                }
-            });
-    };
-    addAndMakeVisible (loadButton);
+    kitWindow.setTooltip ("Kit: samples, colours and sound of every pad. Click for kits");
+    kitWindow.onClick = [this] { showKitMenu(); };
+    controllerWindow.setTooltip ("Controller: which note plays each pad and which CC moves each knob. Click for controllers");
+    controllerWindow.onClick = [this] { showControllerMenu(); };
+    addAndMakeVisible (kitWindow);
+    addAndMakeVisible (controllerWindow);
+    refreshPresetNames();
 
     // LFO panel ------------------------------------------------------------
     lfoTitle.setText ("MODULATION", juce::dontSendNotification);
@@ -556,7 +518,9 @@ void MosaicEditor::updateKnobDecorations()
         if (learning)     txt += "  LEARN";
         else if (cc >= 0) txt += "  CC" + juce::String (cc);
 
-        k->slider.setLegend (txt.toUpperCase(), learning ? Mosaic::accent2 : (cc >= 0 ? Mosaic::accent : rackui::colour::ink));
+        k->slider.setLegend (learning ? juce::String ("LEARN") : k->baseName.toUpperCase(), learning ? Mosaic::accent2 : rackui::colour::ink);
+        k->slider.setHoverNote (cc >= 0 ? "CC" + juce::String (cc) : juce::String());
+        juce::ignoreUnused (txt);
     }
 }
 
@@ -843,6 +807,7 @@ void MosaicEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 
     outBusBox.setSelectedId (processor.getPadOutputBus (selectedPad) + 1, juce::dontSendNotification);
     updateKnobDecorations();
+    refreshPresetNames();
 }
 
 //==============================================================================
@@ -898,6 +863,147 @@ void MosaicEditor::setPanelSize (int index)
 }
 
 //==============================================================================
+void MosaicEditor::PresetWindow::paintButton (juce::Graphics& g, bool over, bool)
+{
+    const auto area = getLocalBounds().toFloat();
+    rackui::oled (g, area);
+    rackui::oledText (g, getButtonText(), area.reduced (10.0f, 0.0f).withTrimmedRight (14.0f), Mosaic::accent, 12.0f);
+    juce::Path caret;
+    const float cx = area.getRight() - 11.0f, cy = area.getCentreY();
+    caret.startNewSubPath (cx - 3.5f, cy - 1.5f);
+    caret.lineTo (cx, cy + 2.0f);
+    caret.lineTo (cx + 3.5f, cy - 1.5f);
+    g.setColour (Mosaic::accent.withAlpha (over ? 0.9f : 0.45f));
+    g.strokePath (caret, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+void MosaicEditor::refreshPresetNames()
+{
+    const auto kit = processor.getKitName(), controller = processor.getControllerName();
+    kitWindow.setButtonText (kit.isNotEmpty() ? kit.toUpperCase() : juce::String ("UNSAVED KIT"));
+    controllerWindow.setButtonText (controller.isNotEmpty() ? controller.toUpperCase() : juce::String ("NO CONTROLLER PRESET"));
+    kitWindow.repaint();
+    controllerWindow.repaint();
+}
+
+void MosaicEditor::afterKitLoaded()
+{
+    rebuildGridLayout();
+    selectPad (processor.getActivePad());
+    for (auto* pc : pads)
+        pc->refreshFromState();
+    refreshPresetNames();
+}
+
+namespace
+{
+    // Presets in a folder (and, for kits, the older .mosaic presets one level up), by name.
+    juce::Array<juce::File> presetFiles (const juce::File& dir, const juce::String& pattern, const juce::File& alsoIn = {})
+    {
+        auto files = dir.findChildFiles (juce::File::findFiles, false, pattern);
+        if (alsoIn.isDirectory())
+            files.addArray (alsoIn.findChildFiles (juce::File::findFiles, false, pattern));
+        std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b)
+                   { return a.getFileNameWithoutExtension().compareNatural (b.getFileNameWithoutExtension()) < 0; });
+        return files;
+    }
+}
+
+void MosaicEditor::showKitMenu()
+{
+    juce::PopupMenu m;
+    m.addSectionHeader ("Kits");
+    const auto files = presetFiles (MosaicAudioProcessor::getKitsDirectory(), "*.mosaic", MosaicAudioProcessor::getPresetsDirectory());
+    const auto current = processor.getKitName();
+    for (const auto& f : files)
+        m.addItem (f.getFileNameWithoutExtension(), true, f.getFileNameWithoutExtension() == current, [this, f]
+        {
+            if (processor.loadKitFromFile (f))
+                afterKitLoaded();
+        });
+    if (files.isEmpty())
+        m.addItem ("No kits saved yet", false, false, [] {});
+    m.addSeparator();
+    m.addItem ("Load kit from file...", [this]
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Load MOSAIC kit", MosaicAudioProcessor::getKitsDirectory(), "*.mosaic");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [this] (const juce::FileChooser& fc)
+            {
+                if (fc.getResult().existsAsFile() && processor.loadKitFromFile (fc.getResult()))
+                    afterKitLoaded();
+            });
+    });
+    m.addItem ("Store kit...", [this]
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Store MOSAIC kit", MosaicAudioProcessor::getKitsDirectory(), "*.mosaic");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+            [this] (const juce::FileChooser& fc)
+            {
+                auto f = fc.getResult();
+                if (f == juce::File())
+                    return;
+                if (! f.hasFileExtension ("mosaic"))
+                    f = f.withFileExtension ("mosaic");
+                processor.saveKitToFile (f);
+                refreshPresetNames();
+            });
+    });
+    m.addItem ("Open kits folder", [] { MosaicAudioProcessor::getKitsDirectory().startAsProcess(); });
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&kitWindow).withMinimumWidth (kitWindow.getWidth()));
+}
+
+void MosaicEditor::showControllerMenu()
+{
+    juce::PopupMenu m;
+    m.addSectionHeader ("Controllers");
+    const auto files = presetFiles (MosaicAudioProcessor::getControllersDirectory(), "*.mosaicctl");
+    const auto current = processor.getControllerName();
+    for (const auto& f : files)
+        m.addItem (f.getFileNameWithoutExtension(), true, f.getFileNameWithoutExtension() == current, [this, f]
+        {
+            processor.loadControllerFromFile (f);
+            refreshPresetNames();
+        });
+    if (files.isEmpty())
+        m.addItem ("No controllers saved yet", false, false, [] {});
+    m.addSeparator();
+    m.addItem ("Load controller from file...", [this]
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Load MOSAIC controller", MosaicAudioProcessor::getControllersDirectory(), "*.mosaicctl");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [this] (const juce::FileChooser& fc)
+            {
+                if (fc.getResult().existsAsFile())
+                    processor.loadControllerFromFile (fc.getResult());
+                refreshPresetNames();
+            });
+    });
+    m.addItem ("Store controller...", [this]
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Store MOSAIC controller", MosaicAudioProcessor::getControllersDirectory(), "*.mosaicctl");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+            [this] (const juce::FileChooser& fc)
+            {
+                auto f = fc.getResult();
+                if (f == juce::File())
+                    return;
+                if (! f.hasFileExtension ("mosaicctl"))
+                    f = f.withFileExtension ("mosaicctl");
+                processor.saveControllerToFile (f);
+                refreshPresetNames();
+            });
+    });
+    m.addItem ("Clear mapping (all notes and CCs)", [this]
+    {
+        processor.clearControllerMapping();
+        refreshPresetNames();
+    });
+    m.addItem ("Open controllers folder", [] { MosaicAudioProcessor::getControllersDirectory().startAsProcess(); });
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&controllerWindow).withMinimumWidth (controllerWindow.getWidth()));
+}
+
+//==============================================================================
 void MosaicEditor::paint (juce::Graphics& g)
 {
     g.drawImageAt (background, 0, 0);
@@ -949,7 +1055,10 @@ void MosaicEditor::paintBackground (juce::Graphics& g)
     nameplate (g, { x, 24.0f }, "fenrikos", "MOSAIC", "MODULAR PAD SAMPLER",
                rune ({ { 4.5f, 2, 4.5f, 18 }, { 15.5f, 2, 15.5f, 18 }, { 4.5f, 2, 15.5f, 10 }, { 15.5f, 2, 4.5f, 10 } }, 2.3f),
                colour::ink);
-    oled (g, presetName.getBounds().toFloat());
+    print (g, "KIT", { (float) kitWindow.getX(), (float) kitWindow.getY() - 13.0f, 120.0f, 11.0f }, Face::textMedium, 8.5f, 0.2f, colour::inkDim,
+           juce::Justification::centredLeft);
+    print (g, "CONTROLLER", { (float) controllerWindow.getX(), (float) controllerWindow.getY() - 13.0f, 120.0f, 11.0f }, Face::textMedium, 8.5f, 0.2f,
+           colour::inkDim, juce::Justification::centredLeft);
 
     // Display for the selected pad.
     const auto glassArea = bezel (g, screenArea.toFloat());
@@ -1012,9 +1121,8 @@ void MosaicEditor::resized()
     const int left = rackui::earWidth + 30, right = baseWidth - rackui::earWidth - 30;
 
     // Top row: nameplate with the preset window | selected-pad display | modes, output and selection.
-    presetName.setBounds (left, 112, 206, 34);
-    loadButton.setBounds (left, 156, 58, 22);
-    saveButton.setBounds (left + 64, 156, 58, 22);
+    kitWindow.setBounds (left, 116, 206, 28);
+    controllerWindow.setBounds (left, 168, 206, 28);
     screenArea = { left + 206 + 32, 24, 440, 172 };
     screenPad->setBounds (screenArea.reduced (9));
     const int rx = right - 210;

@@ -581,6 +581,124 @@ bool MosaicAudioProcessor::loadPresetFromFile (const juce::File& file)
 }
 
 //==============================================================================
+namespace
+{
+    const juce::Identifier kControllerType { "MOSAIC_CONTROLLER" };
+    const juce::Identifier kKitNameProp    { "kitName" };
+    const juce::Identifier kCtlNameProp    { "controllerName" };
+}
+
+juce::File MosaicAudioProcessor::getKitsDirectory()
+{
+    auto dir = getPresetsDirectory().getChildFile ("Kits");
+    dir.createDirectory();
+    return dir;
+}
+
+juce::File MosaicAudioProcessor::getControllersDirectory()
+{
+    auto dir = getPresetsDirectory().getChildFile ("Controllers");
+    dir.createDirectory();
+    return dir;
+}
+
+juce::String MosaicAudioProcessor::getKitName() const        { return apvts.state.getProperty (kKitNameProp).toString(); }
+juce::String MosaicAudioProcessor::getControllerName() const { return apvts.state.getProperty (kCtlNameProp).toString(); }
+
+juce::ValueTree MosaicAudioProcessor::captureController() const
+{
+    juce::ValueTree controller (kControllerType);
+    for (int p = 0; p < Config::maxPads; ++p)
+    {
+        juce::ValueTree pad (kPadType);
+        pad.setProperty (kIndexProp, p, nullptr);
+        pad.setProperty (kNoteProp, padMeta (p).getProperty (kNoteProp, -1), nullptr);
+        controller.appendChild (pad, nullptr);
+    }
+    // The live map, not ccMapTree: a CC learnt on the audio thread reaches the tree a moment later.
+    juce::ValueTree cc (kCCMapType);
+    for (int c = 0; c < 128; ++c)
+        if (const int role = ccToRole[c].load(); role >= 0)
+            cc.setProperty (ccPropForNumber (c), role, nullptr);
+    controller.appendChild (cc, nullptr);
+    return controller;
+}
+
+void MosaicAudioProcessor::applyController (const juce::ValueTree& controller)
+{
+    for (int p = 0; p < Config::maxPads; ++p)
+    {
+        const auto pad = controller.getChildWithProperty (kIndexProp, p);
+        const int note = pad.isValid() ? (int) pad.getProperty (kNoteProp, -1) : -1;
+        padMeta (p).setProperty (kNoteProp, juce::jlimit (-1, 127, note), nullptr);   // listener updates the engine
+    }
+    ccMapTree.removeAllProperties (nullptr);
+    if (const auto cc = controller.getChildWithName (kCCMapType); cc.isValid())
+        ccMapTree.copyPropertiesFrom (cc, nullptr);
+    rebuildCCMapFromTree();
+    sendChangeMessage();
+}
+
+bool MosaicAudioProcessor::saveKitToFile (const juce::File& file)
+{
+    apvts.state.setProperty ("activePad", activePad.load(), nullptr);
+    auto kit = apvts.copyState();
+    // A kit carries no controller mapping and no preset names.
+    for (auto pad : kit.getChildWithName (kMetaType))
+        pad.setProperty (kNoteProp, -1, nullptr);
+    if (auto cc = kit.getChildWithName (kCCMapType); cc.isValid())
+        cc.removeAllProperties (nullptr);
+    kit.removeProperty (kKitNameProp, nullptr);
+    kit.removeProperty (kCtlNameProp, nullptr);
+    if (auto xml = kit.createXml(); xml != nullptr && xml->writeTo (file))
+    {
+        apvts.state.setProperty (kKitNameProp, file.getFileNameWithoutExtension(), nullptr);
+        return true;
+    }
+    return false;
+}
+
+bool MosaicAudioProcessor::loadKitFromFile (const juce::File& file)
+{
+    const auto xml = juce::XmlDocument::parse (file);
+    if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
+        return false;
+    const auto controller = captureController();
+    const auto controllerName = getControllerName();
+    restoreFromXml (*xml);
+    applyController (controller);
+    apvts.state.setProperty (kKitNameProp, file.getFileNameWithoutExtension(), nullptr);
+    apvts.state.setProperty (kCtlNameProp, controllerName, nullptr);
+    return true;
+}
+
+bool MosaicAudioProcessor::saveControllerToFile (const juce::File& file)
+{
+    if (auto xml = captureController().createXml(); xml != nullptr && xml->writeTo (file))
+    {
+        apvts.state.setProperty (kCtlNameProp, file.getFileNameWithoutExtension(), nullptr);
+        return true;
+    }
+    return false;
+}
+
+bool MosaicAudioProcessor::loadControllerFromFile (const juce::File& file)
+{
+    const auto xml = juce::XmlDocument::parse (file);
+    if (xml == nullptr || ! xml->hasTagName (kControllerType.toString()))
+        return false;
+    applyController (juce::ValueTree::fromXml (*xml));
+    apvts.state.setProperty (kCtlNameProp, file.getFileNameWithoutExtension(), nullptr);
+    return true;
+}
+
+void MosaicAudioProcessor::clearControllerMapping()
+{
+    applyController (juce::ValueTree (kControllerType));
+    apvts.state.setProperty (kCtlNameProp, juce::String(), nullptr);
+}
+
+//==============================================================================
 void MosaicAudioProcessor::startKnobLearn (int role)
 {
     knobLearnRole.store (role);

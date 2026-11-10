@@ -59,6 +59,21 @@ public:
     bool savePresetToFile  (const juce::File& file);
     bool loadPresetFromFile (const juce::File& file);
 
+    // Two kinds of preset, kept apart so switching one never disturbs the other:
+    //  - a kit (.mosaic): samples, colours, per-pad sound, modes, outputs, grid and LFOs;
+    //  - a controller (.mosaicctl): which note plays each pad and which CC drives each knob.
+    // Loading a kit keeps the current controller mapping (older .mosaic files that still carry
+    // one load fine; their mapping is ignored), and loading a controller keeps the sound.
+    static juce::File getKitsDirectory();
+    static juce::File getControllersDirectory();
+    bool saveKitToFile (const juce::File& file);
+    bool loadKitFromFile (const juce::File& file);
+    bool saveControllerToFile (const juce::File& file);
+    bool loadControllerFromFile (const juce::File& file);
+    void clearControllerMapping();
+    juce::String getKitName() const;
+    juce::String getControllerName() const;
+
     //==========================================================================
     // Public API used by the editor (all message thread).
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
@@ -132,6 +147,8 @@ private:
     void   syncEngineFromMeta();      // push all metadata into engine atomics + reload samples
 
     void   writeCCMapToTree();        // persist CC map into ccMapTree
+    juce::ValueTree captureController() const;                 // notes + CC map, as a standalone tree
+    void   applyController (const juce::ValueTree& controller);
     void   rebuildCCMapFromTree();    // rebuild runtime CC map after a state load
     void   restoreFromXml (const juce::XmlElement& xml);   // shared by setState + preset load
 
