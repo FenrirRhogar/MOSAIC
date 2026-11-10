@@ -1,5 +1,5 @@
 #include "PadComponent.h"
-#include "RackKit.h"
+#include "RackUI.h"
 #include "PluginProcessor.h"
 
 //==============================================================================
@@ -153,40 +153,21 @@ void PadComponent::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
-    // A backlit silicone pad: the colour shows faintly through the rubber when idle and
-    // floods it while sounding (and the whole time a Looping pad is running).
-    const auto body = bounds.reduced (1.5f);
-    if (playing)
-    {
-        g.setColour (padColour.withAlpha (0.35f));
-        g.fillRoundedRectangle (bounds, 7.0f);
-    }
-    auto rubber = juce::Colour (0xff1e1f22).interpolatedWith (padColour, playing ? 0.6f : 0.17f);
-    if (fileHover)
-        rubber = rubber.brighter (0.25f);
-    g.setColour (juce::Colours::black.withAlpha (0.6f));
-    g.fillRoundedRectangle (body.translated (0.0f, 1.5f), 6.0f);
-    g.setGradientFill (juce::ColourGradient (rubber.brighter (0.15f), 0.0f, body.getY(),
-                                             rubber.darker (0.3f), 0.0f, body.getBottom(), false));
-    g.fillRoundedRectangle (body, 6.0f);
-    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.07f), body.getCentreX(), body.getY(),
-                                             juce::Colours::white.withAlpha (0.0f), body.getCentreX(), body.getCentreY(), false));
-    g.fillRoundedRectangle (body.reduced (2.0f), 5.0f);
-    g.setColour (padColour.withAlpha (playing ? 0.95f : 0.4f));
-    g.drawRoundedRectangle (body.reduced (1.0f), 5.5f, playing ? 1.8f : 1.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.12f));
-    g.drawLine (body.getX() + 6.0f, body.getY() + 0.6f, body.getRight() - 6.0f, body.getY() + 0.6f, 1.0f);
-
+    // A tile on the pad screen: dark glass with an outline in the pad's colour, filled with that
+    // colour while it sounds (and the whole time a Looping pad runs).
+    const auto tile = bounds.reduced (1.0f);
+    g.setColour (padColour.withAlpha (playing ? 0.30f : (fileHover ? 0.16f : 0.06f)));
+    g.fillRoundedRectangle (tile, 3.0f);
     // Waveform.
     const auto wave = waveformArea();
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.fillRoundedRectangle (wave.toFloat(), 3.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.35f));
+    g.fillRoundedRectangle (wave.toFloat(), 2.0f);
 
     if (thumbnail.getTotalLength() > 0.0)
     {
         // Waveform height tracks the pad's Volume, so louder pads look bigger.
         const float waveZoom = juce::jlimit (0.0f, 4.0f, paramValue (ParamID::gain (pad)));
-        g.setColour (juce::Colours::white.withAlpha (0.9f));
+        g.setColour (playing ? juce::Colours::white : padColour.withAlpha (0.9f));
         thumbnail.drawChannels (g, wave, 0.0, thumbnail.getTotalLength(), waveZoom);
 
         // Trim region overlay + handles.
@@ -245,8 +226,8 @@ void PadComponent::paint (juce::Graphics& g)
         const auto nameStrip = wave.withTop (wave.getBottom() - 16).toFloat();
         g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.fillRect (nameStrip);
-        g.setColour (juce::Colours::white.withAlpha (0.85f));
-        g.setFont (juce::FontOptions (11.0f));
+        g.setColour (rackui::colour::inkSoft);
+        g.setFont (rackui::font (rackui::Face::mono, 9.0f));
         g.drawText (juce::File (loadedPath).getFileNameWithoutExtension(), nameStrip.reduced (5.0f, 0.0f),
                     juce::Justification::centredLeft, true);
     }
@@ -267,18 +248,16 @@ void PadComponent::paint (juce::Graphics& g)
     }
     else
     {
-        g.setColour (juce::Colours::white.withAlpha (0.6f));
-        g.setFont (12.0f);
-        g.drawText ("double-click or drop a sample", wave, juce::Justification::centred);
+        rackui::print (g, "DROP SAMPLE", wave.toFloat(), rackui::Face::mono, 9.0f, 0.1f, juce::Colour (0xff5d6863));
     }
 
     // Header: pad number + mode + mapped note.
-    g.setColour (rack::colours::silk);
-    g.setFont (juce::FontOptions (11.0f, juce::Font::bold).withKerningFactor (0.08f));
+    g.setColour (playing ? juce::Colours::white : padColour.interpolatedWith (juce::Colours::white, 0.2f));
+    g.setFont (rackui::font (rackui::Face::monoBold, 9.5f));
     const char* modeTag = playModeCached == Config::modeMomentary ? "GATE"
                         : playModeCached == Config::modeLooping    ? "LOOP"
                                                                    : "1SHOT";
-    juce::String header = "PAD " + juce::String (pad + 1) + "  " + modeTag;
+    juce::String header = juce::String (pad + 1).paddedLeft ('0', 2) + " " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " " + modeTag;
     if (learnedNote >= 0)
         header += "  [" + juce::MidiMessage::getMidiNoteName (learnedNote, true, true, 4) + "]";
     else if (learning)
@@ -291,10 +270,10 @@ void PadComponent::paint (juce::Graphics& g)
     // Selection / hover border. Primary pad = bright solid ring; other selected
     // pads = dimmer ring (part of a multi-pad bulk-edit selection).
     const juce::Colour accent (0xff37d6c2);
-    if (primary)       g.setColour (accent);
-    else if (selected) g.setColour (accent.withAlpha (0.55f));
-    else               g.setColour (juce::Colours::black.withAlpha (0.4f));
-    g.drawRoundedRectangle (bounds.reduced (1.0f), 6.0f, selected ? 2.5f : 1.0f);
+    if (primary)       g.setColour (juce::Colour (0xffe9fffb));
+    else if (selected) g.setColour (accent.withAlpha (0.8f));
+    else               g.setColour (padColour.withAlpha (0.45f));
+    g.drawRoundedRectangle (bounds.reduced (1.0f), 3.0f, primary ? 1.6f : 1.0f);
 }
 
 void PadComponent::resized()

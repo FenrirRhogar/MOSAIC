@@ -5,6 +5,7 @@
 #include "PluginProcessor.h"
 #include "PadComponent.h"
 #include "Theme.h"
+#include "RackUI.h"
 #include "UpdateCheck.h"
 
 //==============================================================================
@@ -48,6 +49,7 @@ public:
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool isMouseOver, bool isButtonDown) override;
     void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool isMouseOver, bool isButtonDown) override;
     void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
+    juce::Button* createSliderButton (juce::Slider&, bool isIncrement) override;
 
 private:
     rack::KnobCache knobCache;
@@ -95,6 +97,7 @@ private:
     // One global LFO's controls + APVTS attachments (created once).
     struct LfoStrip
     {
+        rackui::LedSelector shapeSelect { { "SIN", "TRI", "SAW", "SQR", "S&H" }, juce::Colour (0xff37d6c2) };
         juce::Label        name;
         juce::ToggleButton enable, sync;
         juce::ComboBox     shape, syncRate, target, scope;
@@ -108,13 +111,13 @@ private:
 
     // A rotary slider that forwards right-clicks (for the MIDI-learn menu)
     // instead of treating them as value edits.
-    struct LearnableSlider : juce::Slider
+    struct LearnableSlider : rackui::Knob
     {
         std::function<void()> onPopupMenu;
         void mouseDown (const juce::MouseEvent& e) override
         {
             if (e.mods.isPopupMenu() && onPopupMenu) { onPopupMenu(); return; }
-            juce::Slider::mouseDown (e);
+            rackui::Knob::mouseDown (e);
         }
     };
 
@@ -166,7 +169,12 @@ private:
     LabelledKnob  grainKnob;                     // Granular grain size
     std::array<LabelledKnob*, ParamID::numRoles> allKnobs {};
 
-    juce::ComboBox modeBox, pitchModeBox, outBusBox;
+    juce::ComboBox modeBox, pitchModeBox, outBusBox;   // play / pitch modes stay hidden: the LED selectors drive them
+    rackui::LedSelector playSelect   { { "GATE", "1SHOT", "LOOP" }, juce::Colour (0xff37d6c2) };
+    rackui::LedSelector engineSelect { { "REPITCH", "GRAIN", "STUDIO" }, juce::Colour (0xff37d6c2) };
+    juce::Rectangle<int> screenArea;
+    int topRuleY = 0, lfoRuleY = 0;
+    std::array<int, 2> topDividers {};
     juce::Label    modeLabel, pitchModeLabel, outBusLabel;
     std::unique_ptr<ComboAttachment> modeAttachment, pitchModeAttachment;
 
@@ -178,9 +186,9 @@ private:
     std::atomic<bool> gridDirty { true };
 
     // "MOSAIC 1.1.0" in the footer, or "UPDATE ... AVAILABLE" (UpdateCheck.h).
-    fenrikos::UpdateBadge updateBadge { "MOSAIC " + juce::String (JucePlugin_VersionString),
-                                        juce::FontOptions (10.0f, juce::Font::bold).withKerningFactor (0.25f),
-                                        Mosaic::textDim.withAlpha (0.45f), Mosaic::accent, juce::Justification::centredLeft };
+    fenrikos::UpdateBadge updateBadge { juce::String (juce::CharPointer_UTF8 ("MOSAIC  \xc2\xb7  V")) + JucePlugin_VersionString,
+                                        rackui::font (rackui::Face::textMedium, 8.0f, 0.3f),
+                                        rackui::colour::inkFaint, Mosaic::accent, juce::Justification::centredRight };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MosaicEditor)
 };

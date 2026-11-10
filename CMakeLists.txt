@@ -99,7 +99,18 @@ target_compile_definitions(MOSAIC
 # ──────────────────────────────────────────────────────────────────────────────
 # Linked JUCE modules — juce_audio_utils provides AudioThumbnail for waveforms.
 # ──────────────────────────────────────────────────────────────────────────────
+# Panel fonts (SIL OFL), compiled in so legends look the same on every platform.
+juce_add_binary_data(RackFonts
+    HEADER_NAME "RackFonts.h"
+    NAMESPACE RackFonts
+    SOURCES Source/fonts/BarlowCondensed-SemiBold.ttf Source/fonts/BarlowCondensed-Bold.ttf
+            Source/fonts/Barlow-Regular.ttf Source/fonts/Barlow-Medium.ttf
+            Source/fonts/JetBrainsMono-Medium.ttf Source/fonts/JetBrainsMono-Bold.ttf)
+set_target_properties(RackFonts PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_link_libraries(MOSAIC
+    PUBLIC
+        RackFonts
     PRIVATE
         juce::juce_audio_basics
         juce::juce_audio_devices

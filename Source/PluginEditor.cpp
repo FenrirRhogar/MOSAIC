@@ -47,14 +47,27 @@ MosaicLookAndFeel::MosaicLookAndFeel()
     setColour (juce::ToggleButton::tickDisabledColourId, Mosaic::panelHi);
 }
 
+// Small plain knobs (the LFO rate and depth): black body, cream pointer, no scale.
 void MosaicLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h,
                                           float sliderPos, float startAngle, float endAngle,
                                           juce::Slider& slider)
 {
     const auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
-    const float ringR = juce::jmax (12.0f, juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 3.0f);
-    rack::knob (g, knobCache, bounds.getCentre(), ringR, startAngle, endAngle, sliderPos,
-                Mosaic::accent, slider.isEnabled(), slider.isMouseOverOrDragging());
+    const float r = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 2.0f;
+    const auto c = bounds.getCentre();
+    const auto body = juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (c);
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillEllipse (body.translated (0.0f, 2.5f).expanded (1.0f));
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff3d3e3b), c.x - r * 0.3f, c.y - r * 0.5f,
+                                             juce::Colour (0xff111210), c.x + r * 0.4f, c.y + r, true));
+    g.fillEllipse (body);
+    g.setColour (juce::Colours::white.withAlpha (0.14f));
+    juce::Path rim;
+    rim.addCentredArc (c.x, c.y, r - 0.5f, r - 0.5f, 0.0f, -1.2f, 1.2f, true);
+    g.strokePath (rim, juce::PathStrokeType (0.9f));
+    const float a = startAngle + sliderPos * (endAngle - startAngle);
+    g.setColour (slider.isEnabled() ? juce::Colour (0xfff1ead8) : Mosaic::textDim);
+    g.drawLine ({ rackui::polar (c, r * 0.25f, a), rackui::polar (c, r * 0.82f, a) }, 2.0f);
 }
 
 void MosaicLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h,
@@ -89,35 +102,29 @@ void MosaicLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w
     g.fillRect (cap.withSizeKeepingCentre (1.5f, cap.getHeight() - 4.0f));
 }
 
+// Drop-downs are small OLED windows with a caret.
 void MosaicLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
                                       int, int, int, int, juce::ComboBox& box)
 {
-    // A small recessed display window.
-    const auto b = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height).reduced (1.5f);
-    rack::recess (g, b, 2.5f, rack::colours::lcd);
-    if (box.isMouseOver (true))
-    {
-        g.setColour (Mosaic::accent.withAlpha (0.06f));
-        g.fillRoundedRectangle (b, 2.5f);
-    }
-
+    const auto b = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height).reduced (0.5f, 1.0f);
+    rackui::oled (g, b);
     juce::Path caret;
     const float cx = b.getRight() - 10.0f, cy = b.getCentreY();
-    caret.startNewSubPath (cx - 3.5f, cy - 1.5f);
-    caret.lineTo (cx, cy + 2.0f);
-    caret.lineTo (cx + 3.5f, cy - 1.5f);
-    g.setColour (Mosaic::textDim);
-    g.strokePath (caret, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    caret.startNewSubPath (cx - 3.0f, cy - 1.5f);
+    caret.lineTo (cx, cy + 1.5f);
+    caret.lineTo (cx + 3.0f, cy - 1.5f);
+    g.setColour (Mosaic::accent.withAlpha (box.isMouseOver (true) ? 0.9f : 0.45f));
+    g.strokePath (caret, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
-juce::Font MosaicLookAndFeel::getComboBoxFont (juce::ComboBox&)  { return juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 12.0f, juce::Font::bold)); }
+juce::Font MosaicLookAndFeel::getComboBoxFont (juce::ComboBox&)  { return rackui::font (rackui::Face::mono, 10.5f, 0.04f); }
 juce::Font MosaicLookAndFeel::getLabelFont     (juce::Label& l)  { return l.getFont(); }
 
 void MosaicLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
 {
     label.setBounds (8, 1, box.getWidth() - 24, box.getHeight() - 2);
     label.setFont (getComboBoxFont (box));
-    label.setColour (juce::Label::textColourId, Mosaic::accent.brighter (0.4f));
+    label.setColour (juce::Label::textColourId, Mosaic::accent.interpolatedWith (juce::Colours::white, 0.45f));
 }
 
 juce::Label* MosaicLookAndFeel::createSliderTextBox (juce::Slider& slider)
@@ -125,8 +132,8 @@ juce::Label* MosaicLookAndFeel::createSliderTextBox (juce::Slider& slider)
     // Plain values under the knobs: no boxes.
     auto* l = juce::LookAndFeel_V4::createSliderTextBox (slider);
     l->setJustificationType (juce::Justification::centred);
-    l->setFont (juce::Font (juce::FontOptions (11.0f)));
-    l->setColour (juce::Label::textColourId, Mosaic::text);
+    l->setFont (rackui::font (rackui::Face::mono, 9.5f));
+    l->setColour (juce::Label::textColourId, rackui::colour::inkSoft);
     l->setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
     l->setColour (juce::Label::outlineColourId, juce::Colours::transparentBlack);
     l->setColour (juce::TextEditor::backgroundColourId, Theme::glass);
@@ -138,49 +145,44 @@ juce::Label* MosaicLookAndFeel::createSliderTextBox (juce::Slider& slider)
 void MosaicLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour& backgroundColour,
                                               bool isMouseOver, bool isButtonDown)
 {
-    // Buttons given their own colour (pad colour swatches, the learn button while learning)
-    // are lit caps in that colour; everything else is a machined push button.
+    // Buttons given their own colour (pad colour swatches, the learn button while learning) are
+    // small lit lenses in that colour; everything else is a machined cap.
     if (button.isColourSpecified (juce::TextButton::buttonColourId))
     {
-        const auto area = button.getLocalBounds().toFloat().reduced (1.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.7f));
-        g.fillRoundedRectangle (area.translated (0.0f, 1.0f), 3.0f);
-        g.setGradientFill (juce::ColourGradient (backgroundColour.brighter (isMouseOver ? 0.45f : 0.3f), area.getCentreX(), area.getY(),
+        const auto area = button.getLocalBounds().toFloat().reduced (1.5f);
+        g.setColour (juce::Colours::black);
+        g.fillRoundedRectangle (area.expanded (1.0f), 3.0f);
+        g.setGradientFill (juce::ColourGradient (backgroundColour.brighter (isMouseOver ? 0.4f : 0.25f), area.getCentreX(), area.getY(),
                                                  backgroundColour.darker (0.3f), area.getCentreX(), area.getBottom(), false));
-        g.fillRoundedRectangle (area, 3.0f);
-        g.setColour (juce::Colours::white.withAlpha (0.35f));
-        g.drawLine (area.getX() + 2.0f, area.getY() + 0.7f, area.getRight() - 2.0f, area.getY() + 0.7f, 1.0f);
+        g.fillRoundedRectangle (area, 2.5f);
         return;
     }
-    rack::pushButton (g, button.getLocalBounds().toFloat(), isMouseOver, isButtonDown);
+    rackui::cap (g, button.getLocalBounds().toFloat().reduced (0.5f, 1.0f).withTrimmedBottom (1.5f), isMouseOver, isButtonDown);
 }
 
-void MosaicLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool isMouseOver, bool isButtonDown)
+void MosaicLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool, bool isButtonDown)
 {
-    auto area = button.getLocalBounds().toFloat();
+    auto area = button.getLocalBounds().toFloat().withTrimmedBottom (1.5f);
     if (isButtonDown)
-        area.translate (0.0f, 1.0f);
-    const bool lit = button.isColourSpecified (juce::TextButton::buttonColourId);
-    g.setFont (juce::FontOptions (10.5f, juce::Font::bold).withKerningFactor (0.12f));
-    g.setColour (lit ? juce::Colour (0xff15130f) : Mosaic::text.withAlpha (isMouseOver ? 1.0f : 0.85f));
-    g.drawText (lit ? button.getButtonText() : button.getButtonText().toUpperCase(), area, juce::Justification::centred, false);
+        area.translate (0.0f, 0.5f);
+    const bool lens = button.isColourSpecified (juce::TextButton::buttonColourId);
+    rackui::print (g, lens ? button.getButtonText() : button.getButtonText().toUpperCase(), area, rackui::Face::legend, 11.0f, 0.14f,
+                   lens ? juce::Colour (0xff15130f) : rackui::colour::ink);
 }
 
-void MosaicLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool isMouseOver, bool isButtonDown)
+// Switches are an LED and a legend.
+void MosaicLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool isMouseOver, bool)
 {
-    // Switches are latching push buttons with an LED.
     const bool on = button.getToggleState();
-    auto area = button.getLocalBounds().toFloat();
-    rack::pushButton (g, area.reduced (0.0f, 1.0f), isMouseOver, isButtonDown, on);
-    area = area.reduced (1.0f, 2.5f);
-    if (on || isButtonDown)
-        area.translate (0.0f, 1.0f);
-    rack::led (g, { area.getX() + 10.0f, area.getCentreY() }, 2.8f, Mosaic::accent, on);
+    const auto r = button.getLocalBounds().toFloat();
+    rackui::led (g, { 4.5f, r.getCentreY() }, 3.5f, Mosaic::accent, on);
+    rackui::print (g, button.getButtonText().toUpperCase(), r.withTrimmedLeft (13.0f), rackui::Face::legend, 10.5f, 0.14f,
+                   on || isMouseOver ? rackui::colour::ink : rackui::colour::inkSoft, juce::Justification::centredLeft);
+}
 
-    g.setFont (juce::FontOptions (10.0f, juce::Font::bold).withKerningFactor (0.12f));
-    g.setColour (on ? Mosaic::text : Mosaic::textDim);
-    g.drawText (button.getButtonText().toUpperCase(), area.withTrimmedLeft (18.0f).withTrimmedRight (4.0f),
-                juce::Justification::centred, true);
+juce::Button* MosaicLookAndFeel::createSliderButton (juce::Slider&, bool isIncrement)
+{
+    return new juce::TextButton (isIncrement ? "+" : "-");
 }
 
 void MosaicLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
@@ -203,18 +205,19 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     auto setupIntSlider = [this] (juce::Slider& s, juce::Label& l, const juce::String& name)
     {
         s.setSliderStyle (juce::Slider::IncDecButtons);
-        s.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 34, 22);
+        s.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 28, 22);
+        s.setIncDecButtonsMode (juce::Slider::incDecButtonsNotDraggable);
         addAndMakeVisible (s);
         l.setText (name, juce::dontSendNotification);
-        l.setFont (juce::Font (juce::FontOptions (11.0f)));
-        l.setColour (juce::Label::textColourId, Mosaic::textDim);
+        l.setFont (rackui::font (rackui::Face::textMedium, 8.5f, 0.18f));
+        l.setColour (juce::Label::textColourId, rackui::colour::inkDim);
         l.setJustificationType (juce::Justification::centredRight);
         addAndMakeVisible (l);
     };
     setupIntSlider (rowsSlider, rowsLabel, "ROWS");
     setupIntSlider (colsSlider, colsLabel, "COLS");
 
-    followButton.setButtonText ("Follow last played");
+    followButton.setButtonText ("Follow last");
     followButton.setTooltip ("Automatically select the pad that was last triggered");
     followButton.setColour (juce::ToggleButton::textColourId, Mosaic::textDim);
     addAndMakeVisible (followButton);
@@ -235,8 +238,8 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     }
 
     // Inspector -------------------------------------------------------------
-    inspectorTitle.setFont (juce::Font (juce::FontOptions (13.0f, juce::Font::bold).withKerningFactor (0.15f)));
-    inspectorTitle.setColour (juce::Label::textColourId, Mosaic::accent);
+    inspectorTitle.setFont (rackui::font (rackui::Face::legendBold, 13.5f, 0.2f));
+    inspectorTitle.setColour (juce::Label::textColourId, rackui::colour::ink);
     addAndMakeVisible (inspectorTitle);
 
     addKnob (volumeKnob,   "Volume",  ParamID::roleGain);
@@ -252,6 +255,23 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
 
     allKnobs = { &volumeKnob, &panKnob, &pitchKnob, &attackKnob,
                  &releaseKnob, &speedKnob, &startKnob, &endKnob, &grainKnob };
+
+    // Faces and printed scales, in each parameter's own units.
+    using M = std::vector<rackui::Mark>;
+    const auto face = [] (LabelledKnob& k, bool metal, const char* unit, M m)
+    {
+        k.slider.configure (metal ? 54.0f : 46.0f, metal ? rackui::Knob::Variant::metal : rackui::Knob::Variant::black,
+                            Mosaic::accent, k.baseName.toUpperCase(), unit, std::move (m));
+    };
+    face (volumeKnob,  true,  "GAIN",   M { { 0, "0" }, { 0.5, ".5" }, { 1, "1" }, { 2, "2" } });
+    face (panKnob,     false, "",       M { { -1, "L" }, { 0, "C" }, { 1, "R" } });
+    face (pitchKnob,   false, "st",     M { { -24, "-24" }, { 0, "0" }, { 24, "+24" } });
+    face (attackKnob,  false, "ms",     M { { 0, "0" }, { 100, "100" }, { 2000, "2k" } });
+    face (releaseKnob, false, "ms",     M { { 1, "1" }, { 200, "200" }, { 5000, "5k" } });
+    face (speedKnob,   false, "x",      M { { 0.25, ".25" }, { 1, "1" }, { 4, "4" } });
+    face (startKnob,   false, "%",      M { { 0, "0" }, { 0.5, "50" }, { 1, "100" } });
+    face (endKnob,     false, "%",      M { { 0, "0" }, { 0.5, "50" }, { 1, "100" } });
+    face (grainKnob,   false, "ms",     M { { 5, "5" }, { 60, "60" }, { 120, "120" } });
 
     for (auto* k : allKnobs)
         k->slider.onPopupMenu = [this, k] { showKnobLearnMenu (*k); };
@@ -275,6 +295,17 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     setupCombo (modeBox,      modeLabel,      "PLAY MODE");
     setupCombo (pitchModeBox, pitchModeLabel, "PITCH MODE");
     setupCombo (outBusBox,    outBusLabel,    "OUTPUT");
+
+    // Play and pitch modes are LED selectors on the panel; they drive the hidden drop-downs so the
+    // attachments and the multi-pad mirroring stay exactly as they were.
+    for (auto* c : { &modeBox, &pitchModeBox })
+        c->setVisible (false);
+    for (auto* l : { &modeLabel, &pitchModeLabel, &outBusLabel })
+        l->setVisible (false);
+    playSelect.onChange   = [this] (int i) { modeBox.setSelectedItemIndex (i, juce::sendNotificationSync); };
+    engineSelect.onChange = [this] (int i) { pitchModeBox.setSelectedItemIndex (i, juce::sendNotificationSync); };
+    addAndMakeVisible (playSelect);
+    addAndMakeVisible (engineSelect);
 
     pitchModeBox.onChange = [this]
     {
@@ -364,8 +395,9 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     // Presets -------------------------------------------------------------
     presetName.setText ("(unsaved)", juce::dontSendNotification);
     presetName.setJustificationType (juce::Justification::centredRight);
-    presetName.setFont (juce::Font (juce::FontOptions (11.0f)));
-    presetName.setColour (juce::Label::textColourId, Mosaic::textDim);
+    presetName.setFont (rackui::font (rackui::Face::mono, 12.5f, 0.06f));
+    presetName.setColour (juce::Label::textColourId, Mosaic::accent.interpolatedWith (juce::Colours::white, 0.45f));
+    presetName.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (presetName);
 
     saveButton.setTooltip ("Save a .mosaic preset");
@@ -409,9 +441,10 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
 
     // LFO panel ------------------------------------------------------------
     lfoTitle.setText ("MODULATION", juce::dontSendNotification);
+    lfoTitle.setVisible (false);
     lfoTitle.setFont (juce::Font (juce::FontOptions (11.5f, juce::Font::bold).withKerningFactor (0.18f)));
     lfoTitle.setColour (juce::Label::textColourId, Mosaic::accent);
-    addAndMakeVisible (lfoTitle);
+    addChildComponent (lfoTitle);
     for (int i = 0; i < Config::numLfos; ++i)
         setupLfoStrip (i);
 
@@ -423,9 +456,7 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     // value boxes still carry the default style; rebuild them with ours.
     sendLookAndFeelChange();
 
-    setResizable (true, true);
-    setResizeLimits (860 + 2 * rack::earWidth, 600, 1800, 1300);
-    setSize (980 + 2 * rack::earWidth, 800);
+    setSize (980 + 2 * rackui::earWidth, 690);
     rebuildGridLayout();
     selectPad (processor.getActivePad());   // restore selection (survives reopen/minimize)
 
@@ -446,16 +477,13 @@ void MosaicEditor::addKnob (LabelledKnob& k, const juce::String& name, int role)
 {
     k.baseName = name;
     k.role     = role;
-    k.slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    k.slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 62, 15);
     k.slider.setTooltip ("Right-click to MIDI-learn a CC");
     addAndMakeVisible (k.slider);
 
     k.label.setText (name.toUpperCase(), juce::dontSendNotification);
     k.label.setJustificationType (juce::Justification::centred);
     k.label.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::bold).withKerningFactor (0.14f)));
-    k.label.setColour (juce::Label::textColourId, Mosaic::text);
-    addAndMakeVisible (k.label);
+    k.label.setColour (juce::Label::textColourId, Mosaic::text);   // the knob prints its own name
 
     // Bulk edit: turning a knob writes the value to every other selected pad.
     k.slider.onValueChange = [this, &k]
@@ -519,12 +547,7 @@ void MosaicEditor::updateKnobDecorations()
         if (learning)     txt += "  LEARN";
         else if (cc >= 0) txt += "  CC" + juce::String (cc);
 
-        if (k->label.getText() != txt)
-            k->label.setText (txt, juce::dontSendNotification);
-
-        k->label.setColour (juce::Label::textColourId,
-                            learning ? Mosaic::accent2
-                                     : (cc >= 0 ? Mosaic::accent : Mosaic::textDim));
+        k->slider.setLegend (txt.toUpperCase(), learning ? Mosaic::accent2 : (cc >= 0 ? Mosaic::accent : rackui::colour::ink));
     }
 }
 
@@ -535,8 +558,8 @@ void MosaicEditor::setupLfoStrip (int i)
     auto& s = lfoStrips[i];
 
     s.name.setText ("LFO " + juce::String (i + 1), juce::dontSendNotification);
-    s.name.setFont (juce::Font (juce::FontOptions (11.0f).withStyle ("Bold")));
-    s.name.setColour (juce::Label::textColourId, Mosaic::accent);
+    s.name.setFont (rackui::font (rackui::Face::legendBold, 13.0f, 0.2f));
+    s.name.setColour (juce::Label::textColourId, rackui::colour::ink);
     addAndMakeVisible (s.name);
 
     s.enable.setButtonText ("On");
@@ -548,16 +571,17 @@ void MosaicEditor::setupLfoStrip (int i)
     s.syncRate.addItemList (Config::lfoSyncChoices(), 1);
     s.target.addItemList (Config::lfoTargetChoices(), 1);
     s.scope.addItemList (Config::lfoScopeChoices(), 1);
-    addAndMakeVisible (s.shape);
+    addChildComponent (s.shape);   // driven by the LED shape selector
+    s.shapeSelect.onChange = [&s] (int k) { s.shape.setSelectedItemIndex (k, juce::sendNotificationSync); };
+    addAndMakeVisible (s.shapeSelect);
     addAndMakeVisible (s.syncRate);
     addAndMakeVisible (s.target);
     addAndMakeVisible (s.scope);
 
-    // Linear sliders fit the compact horizontal strip far better than rotaries.
     for (auto* sl : { &s.rate, &s.depth })
     {
-        sl->setSliderStyle (juce::Slider::LinearHorizontal);
-        sl->setTextBoxStyle (juce::Slider::TextBoxRight, false, 46, 18);
+        sl->setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        sl->setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 16);
         addAndMakeVisible (*sl);
     }
     s.rate.setTextValueSuffix (" Hz");
@@ -570,20 +594,33 @@ void MosaicEditor::setupLfoStrip (int i)
     s.scopeAtt    = std::make_unique<ComboAttachment>  (apvts, ParamID::lfoScope (i),    s.scope);
     s.rateAtt     = std::make_unique<SliderAttachment> (apvts, ParamID::lfoRate (i),     s.rate);
     s.depthAtt    = std::make_unique<SliderAttachment> (apvts, ParamID::lfoDepth (i),    s.depth);
+    s.shapeSelect.setSelected (s.shape.getSelectedItemIndex());
 }
 
-void MosaicEditor::layoutLfoStrip (int i, juce::Rectangle<int> row)
+// One LFO section: name, ON and SYNC; the shape selector; rate and depth knobs; then the sync
+// division, target and scope windows.
+void MosaicEditor::layoutLfoStrip (int i, juce::Rectangle<int> area)
 {
     auto& s = lfoStrips[i];
-    s.name.setBounds    (row.removeFromLeft (42));
-    s.enable.setBounds  (row.removeFromLeft (50));  row.removeFromLeft (6);
-    s.shape.setBounds   (row.removeFromLeft (80));  row.removeFromLeft (8);
-    s.rate.setBounds    (row.removeFromLeft (128)); row.removeFromLeft (8);
-    s.sync.setBounds    (row.removeFromLeft (62));  row.removeFromLeft (4);
-    s.syncRate.setBounds(row.removeFromLeft (56));  row.removeFromLeft (10);
-    s.depth.setBounds   (row.removeFromLeft (116)); row.removeFromLeft (10);
-    s.target.setBounds  (row.removeFromLeft (82));  row.removeFromLeft (8);
-    s.scope.setBounds   (row.removeFromLeft (86));
+    auto row = area.removeFromTop (20);
+    s.name.setBounds (row.removeFromLeft (60));
+    s.sync.setBounds (row.removeFromRight (58));
+    s.enable.setBounds (row.removeFromRight (46));
+    area.removeFromTop (8);
+    s.shapeSelect.setBounds (area.removeFromTop (18));
+    area.removeFromTop (10);
+    auto knobs = area.removeFromTop (40);
+    s.rate.setBounds (knobs.removeFromLeft (100));
+    knobs.removeFromLeft (12);
+    s.depth.setBounds (knobs.removeFromLeft (100));
+    area.removeFromTop (10);
+    auto windows = area.removeFromTop (22);
+    const int w = (windows.getWidth() - 12) / 3;
+    s.syncRate.setBounds (windows.removeFromLeft (w));
+    windows.removeFromLeft (6);
+    s.target.setBounds (windows.removeFromLeft (w));
+    windows.removeFromLeft (6);
+    s.scope.setBounds (windows);
 }
 
 //==============================================================================
@@ -651,6 +688,8 @@ void MosaicEditor::applySelection()
     outBusBox.setSelectedId (processor.getPadOutputBus (selectedPad) + 1, juce::dontSendNotification);
 
     grainKnob.slider.setEnabled (pitchModeBox.getSelectedItemIndex() == Config::pitchGranular);
+    playSelect.setSelected (modeBox.getSelectedItemIndex());
+    engineSelect.setSelected (pitchModeBox.getSelectedItemIndex());
 
     suppressMirror = false;
 
@@ -776,6 +815,12 @@ void MosaicEditor::timerCallback()
 
     updateKnobDecorations();
     refreshOutputMenu();
+
+    // Presets and host automation move the drop-downs; the LEDs follow.
+    playSelect.setSelected (modeBox.getSelectedItemIndex());
+    engineSelect.setSelected (pitchModeBox.getSelectedItemIndex());
+    for (auto& strip : lfoStrips)
+        strip.shapeSelect.setSelected (strip.shape.getSelectedItemIndex());
 }
 
 void MosaicEditor::changeListenerCallback (juce::ChangeBroadcaster*)
@@ -815,116 +860,105 @@ void MosaicEditor::paint (juce::Graphics& g)
     g.drawImageAt (background, 0, 0);
 }
 
-// Everything static: plate, header, cards and footer. Rendered once per resize.
+// Everything static: plate, ears, nameplate, screen bezel, section legends and rules.
 void MosaicEditor::paintBackground (juce::Graphics& g)
 {
+    using namespace rackui;
     const auto bounds = getLocalBounds().toFloat();
-    const auto plate = bounds.reduced ((float) rack::earWidth, 0.0f);
-    rack::faceplate (g, bounds);
+    const auto plateArea = bounds.reduced ((float) earWidth, 0.0f);
+    plate (g, plateArea);
+    ears (g, bounds);
+    const float x = plateArea.getX() + 30.0f;
+    nameplate (g, { x, 26.0f }, "FENRIKOS", "MOSAIC", "MODULAR PAD SAMPLER",
+               rune ({ { 4.5f, 2, 4.5f, 18 }, { 15.5f, 2, 15.5f, 18 }, { 4.5f, 2, 15.5f, 10 }, { 15.5f, 2, 4.5f, 10 } }, 2.3f),
+               juce::Colour (0xfff08a3e));
+    oled (g, presetName.getBounds().toFloat());
 
-    // Nameplate: Mannaz mark, model name and tagline silkscreened at the top left.
-    const float x = plate.getX();
-    Theme::fillRune (g, Theme::mannaz ({ x + 16.0f, 10.0f, 32.0f, 32.0f }));
-    g.setFont (juce::FontOptions (24.0f, juce::Font::bold).withKerningFactor (0.28f));
-    rack::silk (g, "MOSAIC", { x + 56.0f, 7.0f, 220.0f, 26.0f }, juce::Justification::centredLeft);
-    g.setFont (juce::FontOptions (10.5f).withKerningFactor (0.08f));
-    g.setColour (Mosaic::textDim);
-    g.drawText ("MODULAR PAD SAMPLER", juce::Rectangle<float> (x + 57.0f, 32.0f, 240.0f, 14.0f), juce::Justification::centredLeft);
+    for (auto dx : topDividers)
+        divider (g, (float) dx, 34.0f, 250.0f);
 
-    rack::seam (g, plate.getX() + 16.0f, plate.getRight() - 16.0f, 85.0f);
+    // Pad screen: bezel, dark glass and a status line.
+    const auto glassArea = bezel (g, screenArea.toFloat());
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff0b1513), glassArea.getCentreX(), glassArea.getBottom(),
+                                             juce::Colour (0xff060808), glassArea.getCentreX(), glassArea.getY(), true));
+    g.fillRect (glassArea);
+    oledText (g, "PADS  " + juce::String (visibleRows) + juce::String (juce::CharPointer_UTF8 ("\xc3\x97")) + juce::String (visibleCols),
+              glassArea.reduced (10.0f, 0.0f).withHeight (20.0f), Mosaic::accent, 9.5f);
 
-    // The pads sit in a recessed well; the inspector and modulation are silkscreened sections.
-    if (! gridPanel.isEmpty())
-        rack::recess (g, gridPanel.toFloat(), 8.0f, juce::Colour (0xff111214));
-    for (auto panel : { inspectorPanel, lfoPanel })
-        if (! panel.isEmpty())
-            Theme::card (g, panel.toFloat());
+    // Right column legends.
+    const float rx = (float) topDividers[1] + 20.0f;
+    print (g, "GRID", { rx, 34.0f, 120.0f, 16.0f }, Face::legend, 11.5f, 0.22f, colour::ink, juce::Justification::centredLeft);
+    print (g, "SELECT", { rx, 138.0f, 120.0f, 16.0f }, Face::legend, 11.5f, 0.22f, colour::ink, juce::Justification::centredLeft);
 
-    g.setFont (juce::FontOptions (10.0f, juce::Font::bold).withKerningFactor (0.3f));
-    const auto footer = plate.withTop (bounds.getBottom() - 22.0f);
-    g.setColour (Mosaic::textDim);
-    g.drawText ("FENRIKOS", footer.withTrimmedRight (20.0f), juce::Justification::centredRight);
+    rule (g, x, plateArea.getRight() - 30.0f, (float) topRuleY);
+    rule (g, x, plateArea.getRight() - 30.0f, (float) lfoRuleY);
+
+    // Inspector selectors legends.
+    const auto legend = [&] (const char* t, juce::Component& c)
+    {
+        print (g, t, { (float) c.getX(), (float) c.getY() - 14.0f, 120.0f, 12.0f }, Face::textMedium, 8.5f, 0.18f, colour::inkDim,
+               juce::Justification::centredLeft);
+    };
+    legend ("PLAY", playSelect);
+    legend ("ENGINE", engineSelect);
+    legend ("OUTPUT", outBusBox);
+
+    // LFO knob legends.
+    for (auto& strip : lfoStrips)
+    {
+        print (g, "RATE", { (float) strip.rate.getX() + 46.0f, (float) strip.rate.getY() - 1.0f, 60.0f, 12.0f }, Face::textMedium, 8.0f, 0.18f,
+               colour::inkDim, juce::Justification::centredLeft);
+        print (g, "DEPTH", { (float) strip.depth.getX() + 46.0f, (float) strip.depth.getY() - 1.0f, 60.0f, 12.0f }, Face::textMedium, 8.0f, 0.18f,
+               colour::inkDim, juce::Justification::centredLeft);
+    }
+
+    print (g, "FENRIKOS", { x, bounds.getBottom() - 20.0f, 200.0f, 14.0f }, Face::textMedium, 8.0f, 0.3f, colour::inkFaint,
+           juce::Justification::centredLeft);
 }
 
 void MosaicEditor::resized()
 {
-    auto area = getLocalBounds().reduced (rack::earWidth, 0);
+    const int left = rackui::earWidth + 30, right = getWidth() - rackui::earWidth - 30;
 
-    // Header — two rows: branding + presets, then selection + grid size.
-    auto header = area.removeFromTop (86);
+    // Top row: nameplate with preset window | pad screen | grid and selection controls.
+    presetName.setBounds (left, 112, 206, 34);
+    loadButton.setBounds (left, 156, 58, 22);
+    saveButton.setBounds (left + 64, 156, 58, 22);
+    topDividers[0] = left + 206 + 18;
+    screenArea = { topDividers[0] + 20, 30, 540, 266 };
+    topDividers[1] = screenArea.getRight() + 20;
+    const int rx = topDividers[1] + 20;
+    rowsLabel.setBounds (rx, 58, 40, 24);
+    rowsSlider.setBounds (rx + 40, 58, 72, 24);
+    colsLabel.setBounds (rx, 90, 40, 24);
+    colsSlider.setBounds (rx + 40, 90, 72, 24);
+    selectAllButton.setBounds (rx, 162, 52, 22);
+    bulkMenuButton.setBounds (rx + 58, 162, 56, 22);
+    followButton.setBounds (rx, 196, 120, 20);
+
+    updateBadge.setBounds (right - 300, getHeight() - 20, 300, 14);
+
+    // Inspector: header, nine knobs, then the mode selectors and output window.
+    topRuleY = 316;
+    inspectorTitle.setBounds (left, topRuleY + 14, 300, 20);
+    int x = left - 26;
+    for (auto* k : allKnobs)
     {
-        auto row1 = header.removeFromTop (44).reduced (18, 0);
-        row1.removeFromLeft (240);   // painted mark and wordmark
-
-        auto presetBar = row1.removeFromRight (280).withSizeKeepingCentre (280, 24);
-        saveButton.setBounds (presetBar.removeFromLeft (52));
-        presetBar.removeFromLeft (6);
-        loadButton.setBounds (presetBar.removeFromLeft (52));
-        presetBar.removeFromLeft (8);
-        presetName.setBounds (presetBar);
-
-        auto row2 = header.removeFromTop (34).reduced (18, 0);
-        auto ctl = row2.removeFromRight (240).withSizeKeepingCentre (240, 24);
-        colsSlider.setBounds (ctl.removeFromRight (72));
-        colsLabel.setBounds  (ctl.removeFromRight (36));
-        ctl.removeFromRight (10);
-        rowsSlider.setBounds (ctl.removeFromRight (72));
-        rowsLabel.setBounds  (ctl.removeFromRight (36));
-
-        auto left = row2.removeFromLeft (330).withSizeKeepingCentre (330, 24);
-        selectAllButton.setBounds (left.removeFromLeft (44));
-        left.removeFromLeft (6);
-        bulkMenuButton.setBounds (left.removeFromLeft (62));
-        left.removeFromLeft (12);
-        followButton.setBounds (left.removeFromLeft (180));
+        const auto s = k->slider.preferredSize();
+        k->slider.setBounds (x, topRuleY + 36, s.x, s.y);
+        x += s.x - 38;
     }
+    const int sx = right - 168;
+    playSelect.setBounds (sx, topRuleY + 50, 168, 18);
+    engineSelect.setBounds (sx, topRuleY + 90, 168, 18);
+    outBusBox.setBounds (sx, topRuleY + 130, 150, 22);
+    outBusBox.setVisible (true);
 
-    updateBadge.setBounds (rack::earWidth + 20, getHeight() - 22, getWidth() / 2, 22);
-    area.removeFromBottom (14);   // footer
-
-    // LFO panel (very bottom) + inspector panel + grid panel (middle).
-    auto lfoOuter       = area.removeFromBottom (128);
-    auto inspectorOuter = area.removeFromBottom (196);
-    lfoPanel       = lfoOuter.reduced (12, 8);
-    inspectorPanel = inspectorOuter.reduced (12, 8);
-    gridPanel      = area.reduced (12, 8);
-
-    {
-        auto lp = lfoPanel.reduced (14, 8);
-        lfoTitle.setBounds (lp.removeFromTop (18));
-        lp.removeFromTop (2);
-        const int rowH = juce::jmax (22, lp.getHeight() / Config::numLfos);
-        for (int i = 0; i < Config::numLfos; ++i)
-            layoutLfoStrip (i, lp.removeFromTop (rowH).reduced (0, 2));
-    }
-
-    // Inspector contents.
-    {
-        auto ins = inspectorPanel.reduced (16, 12);
-        inspectorTitle.setBounds (ins.removeFromTop (20));
-        ins.removeFromTop (4);
-
-        auto knobRow = ins.removeFromTop (88);
-        const int knobW = juce::jmax (52, knobRow.getWidth() / 9);
-        auto placeKnob = [&knobRow, knobW] (LabelledKnob& k)
-        {
-            auto cell = knobRow.removeFromLeft (knobW).reduced (2, 0);
-            k.label.setBounds (cell.removeFromTop (15));
-            k.slider.setBounds (cell);
-        };
-        placeKnob (volumeKnob);   placeKnob (panKnob);      placeKnob (pitchKnob);
-        placeKnob (attackKnob);   placeKnob (releaseKnob);  placeKnob (speedKnob);
-        placeKnob (startKnob);    placeKnob (endKnob);      placeKnob (grainKnob);
-
-        ins.removeFromTop (18);   // room for the combo labels (attached above)
-        auto comboRow = ins.removeFromTop (26);
-        const int comboW = juce::jmax (90, comboRow.getWidth() / 3 - 11);
-        modeBox.setBounds      (comboRow.removeFromLeft (comboW));
-        comboRow.removeFromLeft (16);
-        pitchModeBox.setBounds (comboRow.removeFromLeft (comboW));
-        comboRow.removeFromLeft (16);
-        outBusBox.setBounds    (comboRow.removeFromLeft (comboW));
-    }
+    // Modulation: three LFO sections side by side.
+    lfoRuleY = topRuleY + 178;
+    const int lfoW = (right - left - 2 * 30) / Config::numLfos;
+    for (int i = 0; i < Config::numLfos; ++i)
+        layoutLfoStrip (i, { left + i * (lfoW + 30), lfoRuleY + 16, lfoW, 160 });
 
     background = juce::Image (juce::Image::RGB, juce::jmax (1, getWidth()), juce::jmax (1, getHeight()), false);
     {
@@ -932,8 +966,8 @@ void MosaicEditor::resized()
         paintBackground (bg);
     }
 
-    // Pad grid.
-    auto padArea = gridPanel.reduced (12);
+    // Pad grid, inside the screen under its status line.
+    auto padArea = screenArea.reduced (7).withTrimmedTop (22).reduced (8, 0).withTrimmedBottom (8);
     if (padArea.isEmpty())
         return;
 
