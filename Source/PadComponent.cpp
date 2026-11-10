@@ -175,43 +175,54 @@ int PadComponent::handleHitTest (juce::Point<int> pos) const
 void PadComponent::paintRubber (juce::Graphics& g)
 {
     const auto all = getLocalBounds().toFloat();
-    const auto body = all.withTrimmedBottom (20.0f).reduced (2.0f);
+    // Dense grids: no legend underneath; the number goes on the pad itself.
+    const bool compact = all.getHeight() < 76.0f || all.getWidth() < 96.0f;
+    const auto body = (compact ? all : all.withTrimmedBottom (20.0f)).reduced (2.0f);
+    const float corner = juce::jlimit (4.0f, 8.0f, juce::jmin (body.getWidth(), body.getHeight()) * 0.12f);
     const auto c = padColour;
 
     if (primary || selected)
     {
         g.setColour ((primary ? juce::Colour (0xff37d6c2) : juce::Colour (0xff37d6c2).withAlpha (0.5f)));
-        g.drawRoundedRectangle (body.expanded (2.5f), 10.0f, primary ? 2.5f : 1.5f);
+        g.drawRoundedRectangle (body.expanded (2.5f), corner + 2.0f, primary ? 2.5f : 1.5f);
     }
     if (playing)
     {
         g.setColour (c.withAlpha (0.4f));
-        g.fillRoundedRectangle (body.expanded (6.0f), 13.0f);
+        g.fillRoundedRectangle (body.expanded (compact ? 3.0f : 6.0f), corner + 4.0f);
     }
     g.setColour (juce::Colours::black.withAlpha (0.65f));
-    g.fillRoundedRectangle (body.translated (0.0f, 4.0f).expanded (1.0f), 9.0f);
+    g.fillRoundedRectangle (body.translated (0.0f, compact ? 2.0f : 4.0f).expanded (1.0f), corner + 1.0f);
     g.setColour (juce::Colours::black);
-    g.fillRoundedRectangle (body.expanded (1.0f), 9.0f);
+    g.fillRoundedRectangle (body.expanded (1.0f), corner + 1.0f);
 
     const auto rubber = playing ? c : juce::Colour (0xff262724).interpolatedWith (c, fileHover ? 0.3f : 0.0f);
     g.setGradientFill (juce::ColourGradient (rubber.brighter (playing ? 0.35f : 0.12f), body.getCentreX(), body.getY() + body.getHeight() * 0.35f,
                                              playing ? c.darker (0.25f) : juce::Colour (0xff1b1c1a), body.getRight(), body.getBottom(), true));
-    g.fillRoundedRectangle (body, 8.0f);
+    g.fillRoundedRectangle (body, corner);
     if (! playing)
     {
         // Backlight bleeding through the edges of the silicone.
         juce::Path edge;
-        edge.addRoundedRectangle (body, 8.0f);
+        edge.addRoundedRectangle (body, corner);
         const juce::Graphics::ScopedSaveState save (g);
         g.reduceClipRegion (edge);
         juce::ColourGradient glow (c.withAlpha (0.0f), body.getCentreX(), body.getCentreY(),
                                    c.withAlpha (0.3f), body.getX() - 2.0f, body.getY() - 2.0f, true);
         glow.addColour (0.62, c.withAlpha (0.0f));
         g.setGradientFill (glow);
-        g.fillRoundedRectangle (body, 8.0f);
+        g.fillRoundedRectangle (body, corner);
     }
     g.setColour (juce::Colours::white.withAlpha (playing ? 0.35f : 0.12f));
     g.drawLine (body.getX() + 8.0f, body.getY() + 0.8f, body.getRight() - 8.0f, body.getY() + 0.8f, 1.0f);
+
+    if (compact)
+    {
+        rackui::print (g, juce::String (pad + 1), body.reduced (5.0f, 3.0f), rackui::Face::legendBold, juce::jlimit (9.0f, 12.0f, body.getHeight() * 0.3f), 0.06f,
+                       playing ? juce::Colour (0xff15130f) : (loadedPath.isNotEmpty() ? rackui::colour::inkSoft : rackui::colour::inkFaint),
+                       juce::Justification::topLeft);
+        return;
+    }
 
     // Printed legend under the pad.
     const char* modeTag = playModeCached == Config::modeMomentary ? "GATE"

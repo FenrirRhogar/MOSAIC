@@ -175,6 +175,9 @@ private:
     juce::Rectangle<int> screenArea, trayArea;
     int topRuleY = 0, knobRuleY = 0;
     std::unique_ptr<PadComponent> screenPad;    // the selected pad, shown on the display
+    static constexpr int baseWidth = 980 + 2 * rackui::earWidth, baseHeight = 720;
+    float uiScale = 1.0f;
+    bool scaleReady = false;   // only remember sizes the user (or host) chose
     juce::Label    modeLabel, pitchModeLabel, outBusLabel;
     std::unique_ptr<ComboAttachment> modeAttachment, pitchModeAttachment;
 
