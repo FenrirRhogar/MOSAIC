@@ -19,8 +19,10 @@ Formats: **VST3**, **AU**, **Standalone** · Windows & macOS (universal) · Linu
 
 ## Features
 
-- **Dynamic pad grid** — resize from 1×1 up to 8×8; pads reflow automatically.
-- **Drag & drop** `.wav` / `.mp3` / `.aif` (or double-click a pad to pick one), with waveform display, visual trim and the sample name on the pad.
+- **Dynamic pad grid** — from 1×1 up to 8×8; the window grows with the grid so pads keep a playable size, and the
+  **SIZE** switch (S / M / L) scales the whole panel to 80, 100 or 125 %.
+- **Drag & drop** `.wav` / `.mp3` / `.aif` onto a pad (or double-click it to pick one). The screen shows the selected
+  pad's waveform with draggable trim handles, the envelope and the playhead; the sample name is printed under the pad.
 - **Three trigger modes per pad** — Momentary (gate), Latching (one-shot), Looping (tap to toggle).
 - **Three pitch/time engines per pad:**
   - **Repitch** — classic tape/varispeed, pristine.
@@ -31,7 +33,10 @@ Formats: **VST3**, **AU**, **Standalone** · Windows & macOS (universal) · Linu
 - **Multi-out routing** — send pads to up to 8 stereo outputs for per-pad mixing.
 - **MIDI learn** — map a note to each pad; map hardware CC knobs to the inspector controls.
 - **Hardware LED feedback** — lights your controller's pads in their assigned colours, and keeps looping pads lit.
-- **Multi-select & bulk edit**, **custom pad colours**, **playback cursor**, **"follow last played"**, and a **preset** system.
+- **Two kinds of preset.** A **kit** holds the samples, colours and sound of every pad, the grid and the LFOs; a
+  **controller** preset holds which note plays each pad and which CC moves each knob. Switch kits without losing
+  your hardware mapping, or swap controllers without touching the sound.
+- **Multi-select & bulk edit**, **custom pad colours**, **playback cursor** and **"follow last played"**.
 - **Missing samples are never lost silently.** If a project refers to samples you have moved, their pads show
   MISSING and keep the path; Edit → *Relink missing samples* finds them in a folder you choose.
 - **Responsive:** dropped samples decode in the background, so the window never freezes.
