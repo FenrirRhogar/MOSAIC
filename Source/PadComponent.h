@@ -48,6 +48,15 @@ public:
                   juce::AudioThumbnailCache& thumbCache);
     ~PadComponent() override;
 
+    // Rubber: a backlit pad in the tray (select, load, drop, menu). Screen: the selected pad on the
+    // display, with its waveform, trim handles, envelope and the play / learn / colour buttons.
+    enum class Style { rubber, screen };
+    void setStyle (Style newStyle);
+
+    // Point a screen-style pad at another pad.
+    void setPad (int padIndex);
+    int  getPad() const noexcept { return pad; }
+
     void setSelected (bool shouldBeSelected, bool isPrimary);
     bool isSelected() const noexcept { return selected; }
 
@@ -89,8 +98,11 @@ private:
     void chooseSample();
     void toggleMidiLearn();
 
+    void paintRubber (juce::Graphics&);
+
     MosaicAudioProcessor& processor;
-    const int pad;
+    int pad;
+    Style style = Style::rubber;
 
     juce::AudioThumbnail thumbnail;
     juce::String loadedPath;          // guards redundant thumbnail reloads

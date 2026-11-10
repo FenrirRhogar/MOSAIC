@@ -172,9 +172,9 @@ private:
     juce::ComboBox modeBox, pitchModeBox, outBusBox;   // play / pitch modes stay hidden: the LED selectors drive them
     rackui::LedSelector playSelect   { { "GATE", "1SHOT", "LOOP" }, juce::Colour (0xff37d6c2) };
     rackui::LedSelector engineSelect { { "REPITCH", "GRAIN", "STUDIO" }, juce::Colour (0xff37d6c2) };
-    juce::Rectangle<int> screenArea;
-    int topRuleY = 0, lfoRuleY = 0;
-    std::array<int, 2> topDividers {};
+    juce::Rectangle<int> screenArea, trayArea;
+    int topRuleY = 0, knobRuleY = 0;
+    std::unique_ptr<PadComponent> screenPad;    // the selected pad, shown on the display
     juce::Label    modeLabel, pitchModeLabel, outBusLabel;
     std::unique_ptr<ComboAttachment> modeAttachment, pitchModeAttachment;
 

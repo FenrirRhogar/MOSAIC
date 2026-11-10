@@ -233,9 +233,14 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     {
         auto* pc = new PadComponent (processor, i, thumbnailCache);
         pc->onSelected = [this] (int idx, const juce::ModifierKeys& mods) { handlePadClicked (idx, mods); };
+        pc->setStyle (PadComponent::Style::rubber);
         pads.add (pc);
         addChildComponent (pc);
     }
+    screenPad = std::make_unique<PadComponent> (processor, 0, thumbnailCache);
+    screenPad->setStyle (PadComponent::Style::screen);
+    screenPad->onSelected = [this] (int idx, const juce::ModifierKeys&) { if (idx != selectedPad) selectPad (idx); };
+    addAndMakeVisible (*screenPad);
 
     // Inspector -------------------------------------------------------------
     inspectorTitle.setFont (rackui::font (rackui::Face::legendBold, 13.5f, 0.2f));
@@ -456,7 +461,7 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     // value boxes still carry the default style; rebuild them with ours.
     sendLookAndFeelChange();
 
-    setSize (980 + 2 * rackui::earWidth, 690);
+    setSize (980 + 2 * rackui::earWidth, 720);
     rebuildGridLayout();
     selectPad (processor.getActivePad());   // restore selection (survives reopen/minimize)
 
@@ -560,9 +565,10 @@ void MosaicEditor::setupLfoStrip (int i)
     s.name.setText ("LFO " + juce::String (i + 1), juce::dontSendNotification);
     s.name.setFont (rackui::font (rackui::Face::legendBold, 13.0f, 0.2f));
     s.name.setColour (juce::Label::textColourId, rackui::colour::ink);
-    addAndMakeVisible (s.name);
+    addChildComponent (s.name);
 
-    s.enable.setButtonText ("On");
+    s.enable.setButtonText ("LFO " + juce::String (i + 1));
+    s.name.setVisible (false);
     addAndMakeVisible (s.enable);
     s.sync.setButtonText ("Sync");
     addAndMakeVisible (s.sync);
@@ -581,7 +587,7 @@ void MosaicEditor::setupLfoStrip (int i)
     for (auto* sl : { &s.rate, &s.depth })
     {
         sl->setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-        sl->setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 16);
+        sl->setTextBoxStyle (juce::Slider::TextBoxRight, false, 58, 16);
         addAndMakeVisible (*sl);
     }
     s.rate.setTextValueSuffix (" Hz");
@@ -599,26 +605,25 @@ void MosaicEditor::setupLfoStrip (int i)
 
 // One LFO section: name, ON and SYNC; the shape selector; rate and depth knobs; then the sync
 // division, target and scope windows.
+// One LFO block: its switch (named LFO n) and target window; the shape selector; rate and depth
+// knobs with SYNC; then the sync division and scope windows.
 void MosaicEditor::layoutLfoStrip (int i, juce::Rectangle<int> area)
 {
     auto& s = lfoStrips[i];
     auto row = area.removeFromTop (20);
-    s.name.setBounds (row.removeFromLeft (60));
-    s.sync.setBounds (row.removeFromRight (58));
-    s.enable.setBounds (row.removeFromRight (46));
-    area.removeFromTop (8);
+    s.enable.setBounds (row.removeFromLeft (80));
+    s.target.setBounds (row.removeFromRight (110));
+    area.removeFromTop (6);
     s.shapeSelect.setBounds (area.removeFromTop (18));
-    area.removeFromTop (10);
-    auto knobs = area.removeFromTop (40);
-    s.rate.setBounds (knobs.removeFromLeft (100));
-    knobs.removeFromLeft (12);
-    s.depth.setBounds (knobs.removeFromLeft (100));
-    area.removeFromTop (10);
-    auto windows = area.removeFromTop (22);
-    const int w = (windows.getWidth() - 12) / 3;
-    s.syncRate.setBounds (windows.removeFromLeft (w));
-    windows.removeFromLeft (6);
-    s.target.setBounds (windows.removeFromLeft (w));
+    area.removeFromTop (6);
+    auto knobs = area.removeFromTop (30);
+    s.rate.setBounds (knobs.removeFromLeft (98));
+    knobs.removeFromLeft (6);
+    s.depth.setBounds (knobs.removeFromLeft (98));
+    s.sync.setBounds (knobs.removeFromRight (60).withSizeKeepingCentre (60, 20));
+    area.removeFromTop (4);
+    auto windows = area.removeFromTop (20);
+    s.syncRate.setBounds (windows.removeFromLeft (windows.getWidth() / 2 - 3));
     windows.removeFromLeft (6);
     s.scope.setBounds (windows);
 }
@@ -664,6 +669,8 @@ void MosaicEditor::handlePadClicked (int pad, const juce::ModifierKeys& mods)
 void MosaicEditor::applySelection()
 {
     processor.setActivePad (selectedPad);   // CC-mapped knobs / LFO scope follow the primary
+    if (screenPad != nullptr)
+        screenPad->setPad (selectedPad);
 
     for (int i = 0; i < pads.size(); ++i)
         pads[i]->setSelected (selectedPads.count (i) > 0, i == selectedPad);
@@ -807,6 +814,8 @@ void MosaicEditor::timerCallback()
 
     for (int i = 0; i < pads.size(); ++i)
         pads[i]->setPlayback (processor.isPadActive (i), processor.getPadPlayPosition (i));
+    screenPad->setPlayback (processor.isPadActive (selectedPad), processor.getPadPlayPosition (selectedPad));
+    screenPad->repaint();
 
     // Keep selected pads' envelope / waveform overlays in sync with live edits.
     for (int pad : selectedPads)
@@ -827,6 +836,7 @@ void MosaicEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     for (auto* pc : pads)
         pc->refreshFromState();
+    screenPad->refreshFromState();
 
     outBusBox.setSelectedId (processor.getPadOutputBus (selectedPad) + 1, juce::dontSendNotification);
     updateKnobDecorations();
@@ -860,40 +870,61 @@ void MosaicEditor::paint (juce::Graphics& g)
     g.drawImageAt (background, 0, 0);
 }
 
-// Everything static: plate, ears, nameplate, screen bezel, section legends and rules.
+// Walnut side cheek: warm wood with a fine, slightly wandering grain and a rounded outer edge.
+static void paintCheek (juce::Graphics& g, juce::Rectangle<float> r, bool left)
+{
+    juce::Path shape;
+    shape.addRoundedRectangle (r.getX(), r.getY(), r.getWidth(), r.getHeight(), 10.0f, 10.0f, left, ! left, left, ! left);
+    const juce::Graphics::ScopedSaveState save (g);
+    g.reduceClipRegion (shape);
+    g.setGradientFill (juce::ColourGradient (juce::Colour (left ? 0xff4a2f1f : 0xff5a3826), r.getX(), 0.0f,
+                                             juce::Colour (left ? 0xff5a3826 : 0xff4a2f1f), r.getRight(), 0.0f, false));
+    g.fillRect (r);
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0x00000000), r.getX(), 0.0f, juce::Colour (0x186b4430), r.getCentreX(), 0.0f, false));
+    g.fillRect (r);
+    juce::Random random (left ? 17 : 23);
+    for (int i = 0; i < 26; ++i)
+    {
+        const float x0 = r.getX() + random.nextFloat() * r.getWidth();
+        const float drift = (random.nextFloat() - 0.5f) * 6.0f;
+        juce::Path grain;
+        grain.startNewSubPath (x0, r.getY());
+        grain.cubicTo (x0 + drift, r.getY() + r.getHeight() * 0.33f, x0 - drift, r.getY() + r.getHeight() * 0.66f, x0 + drift * 0.5f, r.getBottom());
+        const bool dark = random.nextFloat() < 0.6f;
+        g.setColour ((dark ? juce::Colours::black : juce::Colour (0xffffdcaa)).withAlpha (dark ? 0.12f + random.nextFloat() * 0.12f : 0.05f));
+        g.strokePath (grain, juce::PathStrokeType (0.6f + random.nextFloat() * 1.4f));
+    }
+    // Lacquer sheen and the joint with the panel.
+    g.setColour (juce::Colours::white.withAlpha (0.05f));
+    g.fillRect (r.withWidth (r.getWidth() * 0.35f).translated (r.getWidth() * 0.15f, 0.0f));
+    g.setColour (juce::Colours::black.withAlpha (0.7f));
+    g.fillRect (left ? r.getRight() - 1.0f : r.getX(), r.getY(), 1.0f, r.getHeight());
+}
+
+// Everything static: cheeks, panel, nameplate, screen bezel, tray, legends and rules.
 void MosaicEditor::paintBackground (juce::Graphics& g)
 {
     using namespace rackui;
     const auto bounds = getLocalBounds().toFloat();
-    const auto plateArea = bounds.reduced ((float) earWidth, 0.0f);
-    plate (g, plateArea);
-    ears (g, bounds);
-    const float x = plateArea.getX() + 30.0f;
-    nameplate (g, { x, 26.0f }, "FENRIKOS", "MOSAIC", "MODULAR PAD SAMPLER",
+    g.fillAll (juce::Colour (0xff0d0d0c));
+    const auto panel = bounds.reduced ((float) earWidth, 0.0f);
+    plate (g, panel);
+    paintCheek (g, bounds.withWidth ((float) earWidth), true);
+    paintCheek (g, bounds.withLeft (bounds.getRight() - (float) earWidth), false);
+
+    const float x = panel.getX() + 30.0f;
+    nameplate (g, { x, 24.0f }, "fenrikos", "MOSAIC", "MODULAR PAD SAMPLER",
                rune ({ { 4.5f, 2, 4.5f, 18 }, { 15.5f, 2, 15.5f, 18 }, { 4.5f, 2, 15.5f, 10 }, { 15.5f, 2, 4.5f, 10 } }, 2.3f),
-               juce::Colour (0xfff08a3e));
+               colour::ink);
     oled (g, presetName.getBounds().toFloat());
 
-    for (auto dx : topDividers)
-        divider (g, (float) dx, 34.0f, 250.0f);
-
-    // Pad screen: bezel, dark glass and a status line.
+    // Display for the selected pad.
     const auto glassArea = bezel (g, screenArea.toFloat());
     g.setGradientFill (juce::ColourGradient (juce::Colour (0xff0b1513), glassArea.getCentreX(), glassArea.getBottom(),
                                              juce::Colour (0xff060808), glassArea.getCentreX(), glassArea.getY(), true));
     g.fillRect (glassArea);
-    oledText (g, "PADS  " + juce::String (visibleRows) + juce::String (juce::CharPointer_UTF8 ("\xc3\x97")) + juce::String (visibleCols),
-              glassArea.reduced (10.0f, 0.0f).withHeight (20.0f), Mosaic::accent, 9.5f);
 
     // Right column legends.
-    const float rx = (float) topDividers[1] + 20.0f;
-    print (g, "GRID", { rx, 34.0f, 120.0f, 16.0f }, Face::legend, 11.5f, 0.22f, colour::ink, juce::Justification::centredLeft);
-    print (g, "SELECT", { rx, 138.0f, 120.0f, 16.0f }, Face::legend, 11.5f, 0.22f, colour::ink, juce::Justification::centredLeft);
-
-    rule (g, x, plateArea.getRight() - 30.0f, (float) topRuleY);
-    rule (g, x, plateArea.getRight() - 30.0f, (float) lfoRuleY);
-
-    // Inspector selectors legends.
     const auto legend = [&] (const char* t, juce::Component& c)
     {
         print (g, t, { (float) c.getX(), (float) c.getY() - 14.0f, 120.0f, 12.0f }, Face::textMedium, 8.5f, 0.18f, colour::inkDim,
@@ -902,17 +933,38 @@ void MosaicEditor::paintBackground (juce::Graphics& g)
     legend ("PLAY", playSelect);
     legend ("ENGINE", engineSelect);
     legend ("OUTPUT", outBusBox);
+    legend ("SELECT", selectAllButton);
 
-    // LFO knob legends.
-    for (auto& strip : lfoStrips)
+    rule (g, x, panel.getRight() - 30.0f, (float) topRuleY);
+    rule (g, x, panel.getRight() - 30.0f, (float) knobRuleY);
+
+    // The pad tray: a recess the pads sit in, with its grid controls above.
+    print (g, "PADS", { x, (float) trayArea.getY() - 26.0f, 80.0f, 20.0f }, Face::legend, 11.5f, 0.22f, colour::ink, juce::Justification::centredLeft);
+    const auto tray = trayArea.toFloat();
+    g.setColour (juce::Colours::white.withAlpha (0.07f));
+    g.fillRoundedRectangle (tray.translated (0.0f, 1.0f), 10.0f);
+    g.setColour (juce::Colour (0xff141513));
+    g.fillRoundedRectangle (tray, 10.0f);
     {
-        print (g, "RATE", { (float) strip.rate.getX() + 46.0f, (float) strip.rate.getY() - 1.0f, 60.0f, 12.0f }, Face::textMedium, 8.0f, 0.18f,
-               colour::inkDim, juce::Justification::centredLeft);
-        print (g, "DEPTH", { (float) strip.depth.getX() + 46.0f, (float) strip.depth.getY() - 1.0f, 60.0f, 12.0f }, Face::textMedium, 8.0f, 0.18f,
-               colour::inkDim, juce::Justification::centredLeft);
+        const juce::Graphics::ScopedSaveState save (g);
+        juce::Path p;
+        p.addRoundedRectangle (tray, 10.0f);
+        g.reduceClipRegion (p);
+        g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.7f), 0.0f, tray.getY(), juce::Colours::black.withAlpha (0.0f), 0.0f, tray.getY() + 14.0f, false));
+        g.fillRect (tray.withHeight (14.0f));
     }
 
-    print (g, "FENRIKOS", { x, bounds.getBottom() - 20.0f, 200.0f, 14.0f }, Face::textMedium, 8.0f, 0.3f, colour::inkFaint,
+    // LFO legends.
+    for (auto& strip : lfoStrips)
+    {
+        print (g, "RATE", { (float) strip.rate.getX() + 32.0f, (float) strip.rate.getY() - 2.0f, 60.0f, 12.0f }, Face::textMedium, 8.0f, 0.18f,
+               colour::inkDim, juce::Justification::centredLeft);
+        print (g, "DEPTH", { (float) strip.depth.getX() + 32.0f, (float) strip.depth.getY() - 2.0f, 60.0f, 12.0f }, Face::textMedium, 8.0f, 0.18f,
+               colour::inkDim, juce::Justification::centredLeft);
+        rule (g, (float) strip.shapeSelect.getX(), (float) strip.shapeSelect.getX() + 276.0f, (float) strip.syncRate.getBottom() + 10.0f);
+    }
+
+    print (g, "fenrikos", { x, bounds.getBottom() - 20.0f, 200.0f, 14.0f }, Face::textMedium, 8.0f, 0.3f, colour::inkFaint,
            juce::Justification::centredLeft);
 }
 
@@ -920,45 +972,45 @@ void MosaicEditor::resized()
 {
     const int left = rackui::earWidth + 30, right = getWidth() - rackui::earWidth - 30;
 
-    // Top row: nameplate with preset window | pad screen | grid and selection controls.
+    // Top row: nameplate with the preset window | selected-pad display | modes, output and selection.
     presetName.setBounds (left, 112, 206, 34);
     loadButton.setBounds (left, 156, 58, 22);
     saveButton.setBounds (left + 64, 156, 58, 22);
-    topDividers[0] = left + 206 + 18;
-    screenArea = { topDividers[0] + 20, 30, 540, 266 };
-    topDividers[1] = screenArea.getRight() + 20;
-    const int rx = topDividers[1] + 20;
-    rowsLabel.setBounds (rx, 58, 40, 24);
-    rowsSlider.setBounds (rx + 40, 58, 72, 24);
-    colsLabel.setBounds (rx, 90, 40, 24);
-    colsSlider.setBounds (rx + 40, 90, 72, 24);
-    selectAllButton.setBounds (rx, 162, 52, 22);
-    bulkMenuButton.setBounds (rx + 58, 162, 56, 22);
-    followButton.setBounds (rx, 196, 120, 20);
+    screenArea = { left + 206 + 32, 24, 440, 172 };
+    screenPad->setBounds (screenArea.reduced (9));
+    const int rx = screenArea.getRight() + 32;
+    playSelect.setBounds (rx, 40, right - rx, 18);
+    engineSelect.setBounds (rx, 78, right - rx, 18);
+    outBusBox.setBounds (rx, 116, 150, 22);
+    outBusBox.setVisible (true);
+    selectAllButton.setBounds (rx, 160, 52, 22);
+    bulkMenuButton.setBounds (rx + 58, 160, 56, 22);
+    followButton.setBounds (rx + 122, 161, 90, 20);
 
     updateBadge.setBounds (right - 300, getHeight() - 20, 300, 14);
 
-    // Inspector: header, nine knobs, then the mode selectors and output window.
-    topRuleY = 316;
-    inspectorTitle.setBounds (left, topRuleY + 14, 300, 20);
+    // Knob row for the selected pad(s).
+    topRuleY = 212;
+    inspectorTitle.setVisible (false);
     int x = left - 26;
     for (auto* k : allKnobs)
     {
         const auto s = k->slider.preferredSize();
-        k->slider.setBounds (x, topRuleY + 36, s.x, s.y);
-        x += s.x - 38;
+        k->slider.setBounds (x, topRuleY + 8, s.x, s.y);
+        x += s.x - 36;
     }
-    const int sx = right - 168;
-    playSelect.setBounds (sx, topRuleY + 50, 168, 18);
-    engineSelect.setBounds (sx, topRuleY + 90, 168, 18);
-    outBusBox.setBounds (sx, topRuleY + 130, 150, 22);
-    outBusBox.setVisible (true);
+    knobRuleY = topRuleY + 142;
 
-    // Modulation: three LFO sections side by side.
-    lfoRuleY = topRuleY + 178;
-    const int lfoW = (right - left - 2 * 30) / Config::numLfos;
+    // Pad tray (left) with its grid controls above, LFOs (right).
+    trayArea = { left, knobRuleY + 46, 620, 720 - 30 - (knobRuleY + 46) };
+    rowsLabel.setBounds (left + 330, knobRuleY + 14, 40, 24);
+    rowsSlider.setBounds (left + 370, knobRuleY + 14, 72, 24);
+    colsLabel.setBounds (left + 470, knobRuleY + 14, 40, 24);
+    colsSlider.setBounds (left + 510, knobRuleY + 14, 72, 24);
+
+    const int lx = trayArea.getRight() + 24;
     for (int i = 0; i < Config::numLfos; ++i)
-        layoutLfoStrip (i, { left + i * (lfoW + 30), lfoRuleY + 16, lfoW, 160 });
+        layoutLfoStrip (i, { lx, knobRuleY + 16 + i * 112, right - lx, 104 });
 
     background = juce::Image (juce::Image::RGB, juce::jmax (1, getWidth()), juce::jmax (1, getHeight()), false);
     {
@@ -966,8 +1018,8 @@ void MosaicEditor::resized()
         paintBackground (bg);
     }
 
-    // Pad grid, inside the screen under its status line.
-    auto padArea = screenArea.reduced (7).withTrimmedTop (22).reduced (8, 0).withTrimmedBottom (8);
+    // Pads in the tray; the grid reflows from 1x1 to 8x8.
+    auto padArea = trayArea.reduced (14);
     if (padArea.isEmpty())
         return;
 
@@ -977,7 +1029,7 @@ void MosaicEditor::resized()
 
     for (int r = 0; r < visibleRows; ++r) grid.templateRows.add    (Track (Fr (1)));
     for (int c = 0; c < visibleCols; ++c) grid.templateColumns.add (Track (Fr (1)));
-    grid.setGap (juce::Grid::Px (7));
+    grid.setGap (juce::Grid::Px (visibleCols > 4 ? 8 : 14));
 
     const int visibleCount = juce::jmin (visibleRows * visibleCols, Config::maxPads);
     for (int i = 0; i < visibleCount; ++i)

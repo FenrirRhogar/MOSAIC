@@ -58,6 +58,25 @@ PadComponent::~PadComponent()
 }
 
 //==============================================================================
+void PadComponent::setStyle (Style newStyle)
+{
+    style = newStyle;
+    const bool screen = style == Style::screen;
+    for (auto* c : std::initializer_list<juce::Component*> { &triggerButton, &learnButton, &colourButton })
+        c->setVisible (screen);
+    repaint();
+}
+
+void PadComponent::setPad (int padIndex)
+{
+    if (padIndex == pad)
+        return;
+    pad = padIndex;
+    loadedPath = {};          // force the thumbnail to reload for the new pad
+    playing = false;
+    refreshFromState();
+}
+
 void PadComponent::setSelected (bool shouldBeSelected, bool isPrimary)
 {
     if (selected != shouldBeSelected || primary != isPrimary)
@@ -113,8 +132,10 @@ void PadComponent::refreshFromState()
 //==============================================================================
 juce::Rectangle<int> PadComponent::waveformArea() const
 {
+    if (style == Style::rubber)
+        return {};   // no trim handles on the rubber pads
     // Leave a header strip for the buttons / note label.
-    return getLocalBounds().reduced (4).withTrimmedTop (22);
+    return getLocalBounds().reduced (4).withTrimmedTop (24);
 }
 
 float PadComponent::paramValue (const juce::String& id) const
@@ -149,15 +170,69 @@ int PadComponent::handleHitTest (juce::Point<int> pos) const
 }
 
 //==============================================================================
+// A backlit rubber pad: its colour glows faintly at the edges and floods it while it sounds (and
+// the whole time a Looping pad runs). Number, sample and mode are printed underneath.
+void PadComponent::paintRubber (juce::Graphics& g)
+{
+    const auto all = getLocalBounds().toFloat();
+    const auto body = all.withTrimmedBottom (20.0f).reduced (2.0f);
+    const auto c = padColour;
+
+    if (primary || selected)
+    {
+        g.setColour ((primary ? juce::Colour (0xff37d6c2) : juce::Colour (0xff37d6c2).withAlpha (0.5f)));
+        g.drawRoundedRectangle (body.expanded (2.5f), 10.0f, primary ? 2.5f : 1.5f);
+    }
+    if (playing)
+    {
+        g.setColour (c.withAlpha (0.4f));
+        g.fillRoundedRectangle (body.expanded (6.0f), 13.0f);
+    }
+    g.setColour (juce::Colours::black.withAlpha (0.65f));
+    g.fillRoundedRectangle (body.translated (0.0f, 4.0f).expanded (1.0f), 9.0f);
+    g.setColour (juce::Colours::black);
+    g.fillRoundedRectangle (body.expanded (1.0f), 9.0f);
+
+    const auto rubber = playing ? c : juce::Colour (0xff262724).interpolatedWith (c, fileHover ? 0.3f : 0.0f);
+    g.setGradientFill (juce::ColourGradient (rubber.brighter (playing ? 0.35f : 0.12f), body.getCentreX(), body.getY() + body.getHeight() * 0.35f,
+                                             playing ? c.darker (0.25f) : juce::Colour (0xff1b1c1a), body.getRight(), body.getBottom(), true));
+    g.fillRoundedRectangle (body, 8.0f);
+    if (! playing)
+    {
+        // Backlight bleeding through the edges of the silicone.
+        juce::Path edge;
+        edge.addRoundedRectangle (body, 8.0f);
+        const juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion (edge);
+        juce::ColourGradient glow (c.withAlpha (0.0f), body.getCentreX(), body.getCentreY(),
+                                   c.withAlpha (0.3f), body.getX() - 2.0f, body.getY() - 2.0f, true);
+        glow.addColour (0.62, c.withAlpha (0.0f));
+        g.setGradientFill (glow);
+        g.fillRoundedRectangle (body, 8.0f);
+    }
+    g.setColour (juce::Colours::white.withAlpha (playing ? 0.35f : 0.12f));
+    g.drawLine (body.getX() + 8.0f, body.getY() + 0.8f, body.getRight() - 8.0f, body.getY() + 0.8f, 1.0f);
+
+    // Printed legend under the pad.
+    const char* modeTag = playModeCached == Config::modeMomentary ? "GATE"
+                        : playModeCached == Config::modeLooping    ? "LOOP"
+                                                                   : "1SHOT";
+    auto label = all.withTop (all.getBottom() - 16.0f);
+    juce::String name = loadedPath.isNotEmpty() ? juce::File (loadedPath).getFileNameWithoutExtension().toUpperCase() : juce::String ("EMPTY");
+    if (learnedNote >= 0)
+        name += "  " + juce::MidiMessage::getMidiNoteName (learnedNote, true, true, 4);
+    rackui::print (g, modeTag, label, rackui::Face::legend, 10.0f, 0.12f, rackui::colour::inkDim, juce::Justification::centredRight);
+    rackui::print (g, juce::String (pad + 1).paddedLeft ('0', 2) + " " + name,
+                   label.withTrimmedRight (40.0f), rackui::Face::legendBold, 11.5f, 0.12f,
+                   loadedPath.isNotEmpty() ? rackui::colour::ink : rackui::colour::inkFaint, juce::Justification::centredLeft);
+}
+
 void PadComponent::paint (juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat();
+    if (style == Style::rubber)
+        return paintRubber (g);
 
-    // A tile on the pad screen: dark glass with an outline in the pad's colour, filled with that
-    // colour while it sounds (and the whole time a Looping pad runs).
-    const auto tile = bounds.reduced (1.0f);
-    g.setColour (padColour.withAlpha (playing ? 0.30f : (fileHover ? 0.16f : 0.06f)));
-    g.fillRoundedRectangle (tile, 3.0f);
+    auto bounds = getLocalBounds().toFloat();
     // Waveform.
     const auto wave = waveformArea();
     g.setColour (juce::Colours::black.withAlpha (0.35f));
@@ -267,13 +342,7 @@ void PadComponent::paint (juce::Graphics& g)
                             .withTrimmedRight (44),   // room for learn / colour buttons
                 juce::Justification::centredLeft);
 
-    // Selection / hover border. Primary pad = bright solid ring; other selected
-    // pads = dimmer ring (part of a multi-pad bulk-edit selection).
-    const juce::Colour accent (0xff37d6c2);
-    if (primary)       g.setColour (juce::Colour (0xffe9fffb));
-    else if (selected) g.setColour (accent.withAlpha (0.8f));
-    else               g.setColour (padColour.withAlpha (0.45f));
-    g.drawRoundedRectangle (bounds.reduced (1.0f), 3.0f, primary ? 1.6f : 1.0f);
+    juce::ignoreUnused (bounds);
 }
 
 void PadComponent::resized()
