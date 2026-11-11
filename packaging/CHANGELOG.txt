@@ -1,5 +1,33 @@
 MOSAIC  -  CHANGELOG
 
+2.0.0
+Look and feel
+- New look: a desktop groovebox with walnut side cheeks, rubber pads and a screen for the selected
+  pad. Knobs carry their names and real units; the pads fit any grid from 1x1 to 8x8.
+- Window size: a SIZE switch (S / M / L = 80 / 100 / 125 %). The window also follows the grid, so
+  a large grid is never squashed.
+- The engine selector says in one line what each engine does.
+- The mouse pointer is always a plain arrow over the window (some Linux desktops showed a
+  resize cursor).
+Sound
+- New: a filter on every pad. One FILTER knob (centre off, left = low-pass, right = high-pass)
+  and a RES knob. Both can be automated, learn a MIDI CC and are saved in kits.
+Presets
+- Two kinds of preset: a KIT (samples, colours, sound, grid, LFOs) and a CONTROLLER (which note
+  plays each pad and which CC moves each knob). Switch kits without losing your hardware mapping.
+- The kit and controller names show an asterisk when they differ from what was loaded or saved.
+Fixes
+- Fixed: the Studio engine could write past the end of its buffer when a host sent audio in
+  larger blocks than it announced (heap corruption). Every engine now works through large blocks
+  in pieces.
+- Fixed: clicking a pad on screen no longer takes a lock the audio thread also uses, so it can no
+  longer cause a glitch. Clicks go through a queue the audio thread reads.
+- Fixed: MIDI-learned CCs are applied on the message thread. The audio thread only records the
+  value, so a busy controller cannot stall audio.
+Removed
+- Controller LED feedback. The colours it sent only suited Launchpad-style controllers, so MOSAIC
+  no longer sends any MIDI. Pad colours stay on screen.
+
 1.1.1
 - Load samples without drag and drop: double-click a pad, or right-click it for Load sample /
   Clear. Dropping files does not work on Linux Wayland desktops, so this is the way in there.

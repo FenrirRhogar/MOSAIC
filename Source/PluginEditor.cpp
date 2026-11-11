@@ -673,7 +673,7 @@ void MosaicEditor::applySelection()
     suppressMirror = false;
 
     inspectorTitle.setText (selectedPads.size() > 1
-                                ? "PADS × " + juce::String ((int) selectedPads.size())
+                                ? juce::String::fromUTF8 ("PADS \xc3\x97 ") + juce::String ((int) selectedPads.size())
                                 : "PAD " + juce::String (selectedPad + 1),
                             juce::dontSendNotification);
 
@@ -890,7 +890,7 @@ void MosaicEditor::PresetWindow::paintButton (juce::Graphics& g, bool over, bool
 void MosaicEditor::refreshPresetNames()
 {
     const auto kit = processor.getKitName(), controller = processor.getControllerName();
-    const auto kitText = (kit.isNotEmpty() ? kit.toUpperCase() : juce::String ("UNSAVED KIT")) + (processor.isKitModified() ? "*" : "");
+    const auto kitText = (kit.isNotEmpty() ? kit.toUpperCase() : juce::String ("UNSAVED KIT")) + (kit.isNotEmpty() && processor.isKitModified() ? "*" : "");
     const auto controllerText = (controller.isNotEmpty() ? controller.toUpperCase() : juce::String ("NO CONTROLLER PRESET"))
                                 + (controller.isNotEmpty() && processor.isControllerModified() ? "*" : "");
     if (kitText != kitWindow.getButtonText())
