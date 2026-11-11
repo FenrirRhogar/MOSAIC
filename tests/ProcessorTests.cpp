@@ -98,6 +98,7 @@ public:
             midi.addEvent (juce::MidiMessage::controllerEvent (1, cc, value), 0);
             buffer.clear();
             plugin->processBlock (buffer, midi);
+            plugin->servicePendingMidi();   // CC values and learning finish on the message thread
         };
         const auto learn = [&] (int role, int cc)
         {
@@ -150,7 +151,7 @@ public:
             midi.addEvent (juce::MidiMessage::controllerEvent (1, cc, 0), 0);
             buffer.clear();
             plugin->processBlock (buffer, midi);
-            plugin->handleUpdateNowIfNeeded();   // the message-thread half of learning, as in the plugin
+            plugin->servicePendingMidi();   // the message-thread half of MIDI handling, as the plugin's timer does
         };
         auto* gain = plugin->getAPVTS().getParameter (ParamID::gain (0));
 
@@ -188,6 +189,128 @@ public:
 };
 
 static PresetSplitTests presetSplitTests;
+
+
+class RealtimeSafetyTests : public juce::UnitTest
+{
+public:
+    RealtimeSafetyTests() : juce::UnitTest ("Real-time safety", "MOSAIC") {}
+
+    void runTest() override
+    {
+        const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getChildFile ("MOSAICRealtime-" + juce::String::toHexString (juce::Random::getSystemRandom().nextInt64()));
+        const auto wav = root.getChildFile ("tone.wav");
+        writeTestWav (wav);
+
+        auto plugin = makeProcessor();
+        plugin->prepareToPlay (48000.0, 256);
+        juce::AudioBuffer<float> buffer (plugin->getTotalNumOutputChannels(), 256);
+        const auto block = [&] (juce::MidiBuffer& midi)
+        {
+            buffer.clear();
+            plugin->processBlock (buffer, midi);
+            plugin->servicePendingMidi();
+        };
+
+        beginTest ("The Studio engine renders a block far larger than the one announced");
+        {
+            auto small = makeProcessor();
+            small->prepareToPlay (48000.0, 64);   // the host promises blocks of at most 64 samples
+            expect (small->setPadSample (0, wav));
+            auto& smallApvts = small->getAPVTS();
+            smallApvts.getParameter (ParamID::pitchMode (0))->setValueNotifyingHost (1.0f);   // Studio
+            smallApvts.getParameter (ParamID::pitch (0))->setValueNotifyingHost (0.5625f);    // +3 semitones
+            small->padPressed (0, 1.0f);
+
+            juce::AudioBuffer<float> big (small->getTotalNumOutputChannels(), 4096);
+            double energy = 0.0;
+            bool finite = true;
+            for (int i = 0; i < 3; ++i)
+            {
+                big.clear();
+                juce::MidiBuffer midi;
+                small->processBlock (big, midi);
+                for (int n = 0; n < big.getNumSamples(); ++n)
+                {
+                    const float v = big.getSample (0, n);
+                    finite = finite && std::isfinite (v);
+                    energy += (double) v * v;
+                }
+            }
+            expect (finite);
+            expect (energy > 0.0);
+        }
+
+        beginTest ("A UI click reaches the audio thread through the queue");
+        expect (plugin->setPadSample (0, wav));
+        plugin->padPressed (0, 1.0f);
+        expect (! plugin->isPadActive (0));   // nothing is started until the audio thread runs
+        {
+            juce::MidiBuffer midi;
+            block (midi);
+        }
+        expect (plugin->isPadActive (0));
+
+        beginTest ("CC values are applied by the message thread, not the audio thread");
+        {
+            auto& apvts = plugin->getAPVTS();
+            const auto sendCC = [&] (int cc, int value, bool service)
+            {
+                juce::MidiBuffer midi;
+                midi.addEvent (juce::MidiMessage::controllerEvent (1, cc, value), 0);
+                buffer.clear();
+                plugin->processBlock (buffer, midi);
+                if (service)
+                    plugin->servicePendingMidi();
+            };
+            plugin->startKnobLearn (ParamID::roleGrain);
+            sendCC (21, 0, true);
+            auto* grain = apvts.getParameter (ParamID::grainSize (plugin->getActivePad()));
+            const float before = grain->getValue();
+            sendCC (21, 127, false);
+            expectWithinAbsoluteError (grain->getValue(), before, 1.0e-6f);   // audio thread left it alone
+            plugin->servicePendingMidi();
+            expectWithinAbsoluteError (grain->getValue(), 1.0f, 1.0e-4f);
+        }
+
+        beginTest ("A burst of pad LED updates is spread over several blocks");
+        {
+            constexpr int pads = 24;
+            for (int p = 0; p < pads; ++p)
+            {
+                expect (plugin->setPadSample (p, wav));
+                plugin->startMidiLearn (p);
+                juce::MidiBuffer midi;
+                midi.addEvent (juce::MidiMessage::noteOn (1, 40 + p, 0.5f), 0);
+                block (midi);
+                plugin->padReleased (p);
+            }
+
+            // Every pad changes colour at once: that is a burst of LED updates for the controller.
+            for (int p = 0; p < pads; ++p)
+                plugin->setPadColour (p, juce::Colours::white);
+
+            int largest = 0, total = 0, blocksWithEvents = 0;
+            for (int i = 0; i < 12; ++i)
+            {
+                juce::MidiBuffer midi;
+                block (midi);
+                const int count = midi.getNumEvents();
+                largest = juce::jmax (largest, count);
+                total += count;
+                blocksWithEvents += count > 0 ? 1 : 0;
+            }
+            expect (largest <= 17);          // 16 events, plus at most one note-off paired with a note-on
+            expect (total > 17);             // more than one block's worth was needed...
+            expect (blocksWithEvents >= 2);  // ...and it was spread over several blocks
+        }
+
+        root.deleteRecursively();
+    }
+};
+
+static RealtimeSafetyTests realtimeSafetyTests;
 
 int main()
 {

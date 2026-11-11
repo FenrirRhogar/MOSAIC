@@ -365,7 +365,22 @@ void PadVoice::prepareStudio (double sr, int maxBlock)
     studioOut.setSize (2, juce::jmax (16, maxBlock));
 }
 
+// The stretcher writes into studioOut, which is sized from the block size announced in
+// prepareToPlay. A host block larger than that is rendered in pieces, so it never overruns it.
 void PadVoice::renderStudio (juce::AudioBuffer<float>& output, int startSample, int numSamples)
+{
+    const int chunk = studioOut.getNumSamples();
+    if (chunk <= 0)    // never prepared: nothing safe to render into
+    {
+        finish();
+        return;
+    }
+
+    for (int done = 0; done < numSamples && currentSound != nullptr; done += chunk)
+        renderStudioChunk (output, startSample + done, juce::jmin (chunk, numSamples - done));
+}
+
+void PadVoice::renderStudioChunk (juce::AudioBuffer<float>& output, int startSample, int numSamples)
 {
     const int    pad    = currentPad;
     const int    numSrc = currentSound->getData().getNumSamples();
@@ -673,6 +688,7 @@ void SamplerEngine::createSoundsAndVoices()
 
 void SamplerEngine::prepare (double sampleRate, int samplesPerBlock)
 {
+    triggerFifo.reset();   // not running while the host prepares: drop clicks queued before it
     currentSampleRate = sampleRate;
     synth.setCurrentPlaybackSampleRate (sampleRate);
 

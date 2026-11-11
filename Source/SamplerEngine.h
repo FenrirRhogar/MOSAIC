@@ -103,6 +103,7 @@ private:
     void renderDirect   (juce::AudioBuffer<float>&, int startSample, int numSamples);
     void renderGranular (juce::AudioBuffer<float>&, int startSample, int numSamples);
     void renderStudio   (juce::AudioBuffer<float>&, int startSample, int numSamples);
+    void renderStudioChunk (juce::AudioBuffer<float>&, int startSample, int numSamples);
     bool interpolate (double sourcePos, float& l, float& r) const noexcept;
     bool updateLoopState() noexcept;      // live mode read + stop-on-mode-change
     void spawnGrain (double anchor) noexcept;
@@ -197,8 +198,10 @@ public:
     int  getOutputBus  (int padIndex) const noexcept     { return outputBus[padIndex].load(); }
     const std::atomic<int>& mappedNoteRef (int padIndex) const noexcept { return mappedNote[padIndex]; }
 
-    void pressPad   (int padIndex, float velocity) { synth.pressPad (padIndex, velocity); }
-    void releasePad (int padIndex)                 { synth.stopPad (padIndex); }
+    // Pad triggers from the UI (message thread). They are queued without any lock and applied by the
+    // audio thread at the start of its next block, so a click can never make the audio thread wait.
+    void pressPad   (int padIndex, float velocity) { pushTrigger ({ padIndex, velocity, true }); }
+    void releasePad (int padIndex)                 { pushTrigger ({ padIndex, 0.0f, false }); }
     bool isPadSustaining (int padIndex)            { return synth.isPadSustaining (padIndex); }
 
     // Per-pad activity meter. Voices register/unregister as they start/finish so
@@ -264,6 +267,7 @@ public:
     void setBusOffset (int bus, int channelOffset) noexcept { busChannelOffset[bus] = channelOffset; }
     void process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
     {
+        drainTriggers();
         synth.renderNextBlock (buffer, midi, 0, buffer.getNumSamples());
     }
 
@@ -320,6 +324,40 @@ public:
     PadSynthesiser& getSynth() noexcept { return synth; }
 
 private:
+    // Single producer (the message thread), single consumer (the audio thread).
+    struct PadTrigger { int pad; float velocity; bool press; };
+    static constexpr int triggerCapacity = 128;
+
+    void pushTrigger (PadTrigger trigger) noexcept
+    {
+        const auto write = triggerFifo.write (1);   // a full queue drops the click rather than waiting
+        if (write.blockSize1 > 0)
+            triggers[write.startIndex1] = trigger;
+    }
+
+    void drainTriggers() noexcept
+    {
+        const int ready = triggerFifo.getNumReady();
+        if (ready <= 0)
+            return;
+
+        const auto read = triggerFifo.read (ready);
+        const auto apply = [this] (int start, int count)
+        {
+            for (int i = 0; i < count; ++i)
+            {
+                const auto& t = triggers[start + i];
+                if (t.press) synth.pressPad (t.pad, t.velocity);
+                else         synth.stopPad (t.pad);
+            }
+        };
+        apply (read.startIndex1, read.blockSize1);
+        apply (read.startIndex2, read.blockSize2);
+    }
+
+    juce::AbstractFifo triggerFifo { triggerCapacity };
+    PadTrigger triggers[triggerCapacity] {};
+
     static float load (const std::atomic<float>* const* arr, int p, float fallback) noexcept
     {
         auto* ptr = arr[p];

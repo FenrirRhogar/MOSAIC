@@ -98,10 +98,12 @@ MosaicAudioProcessor::MosaicAudioProcessor()
     engine.createSoundsAndVoices();
 
     syncEngineFromMeta();
+    startTimerHz (100);
 }
 
 MosaicAudioProcessor::~MosaicAudioProcessor()
 {
+    stopTimer();
     metaTree.removeListener (this);
 }
 
@@ -188,14 +190,13 @@ void MosaicAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 pendingLearnPad.store (midiLearnTarget.load());
                 pendingLearnNote.store (m.getNoteNumber());
                 midiLearnTarget.store (-1);
-                triggerAsyncUpdate();
                 break;
             }
         }
     }
 
-    // MIDI-CC: learn a role mapping if one is pending, otherwise drive the
-    // selected pad's parameter for that role.
+    // MIDI-CC: learn a role mapping if one is pending, otherwise remember the value for the
+    // message thread, which applies it to the selected pad's parameter (servicePendingMidi).
     int learnRole = knobLearnRole.load();
     for (const auto meta : midiMessages)
     {
@@ -213,23 +214,12 @@ void MosaicAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             pendingLearnRole.store (learnRole);
             knobLearnRole.store (-1);
             learnRole = -1;
-            triggerAsyncUpdate();
         }
-        else
+        else if (const int role = ccToRole[cc].load(); role >= 0)
         {
-            const int role = ccToRole[cc].load();
-            const int pad  = activePad.load();
-            if (role >= 0)
-                if (auto* p = roleParams[role][pad])
-                {
-                    // Start stays before End (both are 0-1, so normalised values compare directly).
-                    float v = val;
-                    if (role == ParamID::roleStart)
-                        v = juce::jmin (v, roleParams[ParamID::roleEnd][pad]->getValue() - minTrimGap);
-                    else if (role == ParamID::roleEnd)
-                        v = juce::jmax (v, roleParams[ParamID::roleStart][pad]->getValue() + minTrimGap);
-                    p->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, v));
-                }
+            pendingCcValue[role].store (val);
+            pendingCcPad[role].store (activePad.load());
+            pendingCcDirty[role].store (true);
         }
     }
 
@@ -252,7 +242,16 @@ void MosaicAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
 void MosaicAudioProcessor::sendLedFeedback (juce::MidiBuffer& out)
 {
-    for (int p = 0; p < Config::maxPads; ++p)
+    // A whole 8x8 grid lighting up would be 128 events in one block, and the host owns this
+    // buffer, so growing it could allocate. Send a few per block; the rest follows next block.
+    int budget = maxLedEventsPerBlock;
+    const auto send = [&] (int note, int velocity)
+    {
+        out.addEvent (juce::MidiMessage::noteOn (ledChannel, note, (juce::uint8) velocity), 0);
+        --budget;
+    };
+
+    for (int p = 0; p < Config::maxPads && budget > 0; ++p)
     {
         const int note = engine.getMappedNote (p);
 
@@ -260,7 +259,7 @@ void MosaicAudioProcessor::sendLedFeedback (juce::MidiBuffer& out)
         {
             // Pad no longer addressable — extinguish whatever LED it last lit.
             if (lastLedNote[p] >= 0 && lastLedNote[p] <= 127)
-                out.addEvent (juce::MidiMessage::noteOn (ledChannel, lastLedNote[p], (juce::uint8) 0), 0);
+                send (lastLedNote[p], 0);
             lastLedNote[p] = -1;
             lastLedVel[p]  = -2;
             continue;
@@ -274,21 +273,21 @@ void MosaicAudioProcessor::sendLedFeedback (juce::MidiBuffer& out)
         if (note != lastLedNote[p])
         {
             if (lastLedNote[p] >= 0 && lastLedNote[p] <= 127)
-                out.addEvent (juce::MidiMessage::noteOn (ledChannel, lastLedNote[p], (juce::uint8) 0), 0);
+                send (lastLedNote[p], 0);
             lastLedNote[p] = note;
             lastLedVel[p]  = -2;   // force a resend on the new note
         }
 
         if (vel != lastLedVel[p])
         {
-            out.addEvent (juce::MidiMessage::noteOn (ledChannel, note, (juce::uint8) vel), 0);
+            send (note, vel);
             lastLedVel[p] = vel;
         }
     }
 }
 
 //==============================================================================
-void MosaicAudioProcessor::handleAsyncUpdate()
+void MosaicAudioProcessor::servicePendingMidi()
 {
     const int pad  = pendingLearnPad.exchange (-1);
     const int note = pendingLearnNote.exchange (-1);
@@ -312,6 +311,25 @@ void MosaicAudioProcessor::handleAsyncUpdate()
 
         writeCCMapToTree();
         sendChangeMessage();
+    }
+
+    // CC values the audio thread collected: drive the pad that was selected when each arrived.
+    for (int r = 0; r < ParamID::numRoles; ++r)
+    {
+        if (! pendingCcDirty[r].exchange (false))
+            continue;
+
+        const int target = juce::jlimit (0, Config::maxPads - 1, pendingCcPad[r].load());
+        if (auto* p = roleParams[r][target])
+        {
+            // Start stays before End (both are 0-1, so normalised values compare directly).
+            float v = pendingCcValue[r].load();
+            if (r == ParamID::roleStart)
+                v = juce::jmin (v, roleParams[ParamID::roleEnd][target]->getValue() - minTrimGap);
+            else if (r == ParamID::roleEnd)
+                v = juce::jmax (v, roleParams[ParamID::roleStart][target]->getValue() + minTrimGap);
+            p->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, v));
+        }
     }
 }
 

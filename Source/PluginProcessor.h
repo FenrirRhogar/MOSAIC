@@ -22,7 +22,7 @@
 */
 class MosaicAudioProcessor : public juce::AudioProcessor,
                                        public juce::ValueTree::Listener,
-                                       public juce::AsyncUpdater,
+                                       private juce::Timer,
                                        public juce::ChangeBroadcaster
 {
 public:
@@ -136,8 +136,10 @@ public:
     void valueTreeChildOrderChanged (juce::ValueTree&, int, int) override {}
     void valueTreeParentChanged (juce::ValueTree&) override {}
 
-    // AsyncUpdater — applies a MIDI-learn result on the message thread.
-    void handleAsyncUpdate() override;
+    // The message-thread half of MIDI handling: finishes a note or CC learn and applies the CC
+    // values the audio thread has collected. A timer calls it ~100 times a second, so the audio
+    // thread only ever touches atomics (no listeners, locks or message-queue posts).
+    void servicePendingMidi();
 
 private:
     static BusesProperties makeBusesProperties();
@@ -154,12 +156,20 @@ private:
 
     void   updatePadLedColour (int padIndex);              // recompute LED velocities from pad colour
     void   sendLedFeedback (juce::MidiBuffer& out);        // emit LED note-ons on state change
+    static constexpr int maxLedEventsPerBlock = 16;        // the host owns the output buffer: keep bursts small
 
     juce::AudioProcessorValueTreeState apvts;
     juce::ValueTree metaTree;         // "PADS_META" child of apvts.state
 
     SamplerEngine engine;
     juce::AudioFormatManager formatManager;
+
+    void timerCallback() override { servicePendingMidi(); }
+
+    // CC values waiting for the message thread, per knob role (latest wins).
+    std::atomic<float> pendingCcValue [ParamID::numRoles] {};
+    std::atomic<int>   pendingCcPad   [ParamID::numRoles] {};
+    std::atomic<bool>  pendingCcDirty [ParamID::numRoles] {};
 
     // MIDI note-learn: audio thread records, message thread applies.
     std::atomic<int> midiLearnTarget { -1 };
