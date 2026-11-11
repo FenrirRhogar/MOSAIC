@@ -24,15 +24,18 @@ Formats: **VST3**, **AU**, **Standalone** · Windows & macOS (universal) · Linu
 - **Drag & drop** `.wav` / `.mp3` / `.aif` onto a pad (or double-click it to pick one). The screen shows the selected
   pad's waveform with draggable trim handles, the envelope and the playhead; the sample name is printed under the pad.
 - **Three trigger modes per pad** — Momentary (gate), Latching (one-shot), Looping (tap to toggle).
-- **Three pitch/time engines per pad:**
-  - **Repitch** — classic tape/varispeed, pristine.
-  - **Granular** — independent pitch & time, with a Grain-size control.
-  - **Studio** — high-quality independent pitch/time (powered by Signalsmith Stretch).
+- **Three pitch/time engines per pad.** They only differ once you change **Pitch** or **Speed**; at Pitch 0 and
+  Speed 1 every engine plays the sample untouched.
+  - **Repitch** — like tape: pitch and speed move together (higher = faster and shorter). Simplest, no artefacts.
+  - **Granular** — pitch and speed move independently, built from overlapping grains; the **Grain** knob sets
+    their length (short = tighter but rougher, long = smoother). Light on CPU, a little gritty.
+  - **Studio** — pitch and speed move independently with the cleanest result (Signalsmith Stretch). Heavier on CPU.
 - **Sound shaping** — Volume, Pan, Pitch (±24 st), Speed (0.25–4×), Attack, Release, with the envelope drawn over the waveform.
+- **One-knob filter per pad** — centre is off, turn left for a low-pass (darker), right for a high-pass (thinner);
+  **Res** adds a peak at the cutoff.
 - **3 global LFOs** — Sine/Tri/Saw/Square/S&H, free or **tempo-synced**, routable to Volume / Pan / Pitch / Speed on all pads or the selected pad.
 - **Multi-out routing** — send pads to up to 8 stereo outputs for per-pad mixing.
 - **MIDI learn** — map a note to each pad; map hardware CC knobs to the inspector controls.
-- **Hardware LED feedback** — lights your controller's pads in their assigned colours, and keeps looping pads lit.
 - **Two kinds of preset.** A **kit** holds the samples, colours and sound of every pad, the grid and the LFOs; a
   **controller** preset holds which note plays each pad and which CC moves each knob. Switch kits without losing
   your hardware mapping, or swap controllers without touching the sound.

@@ -26,6 +26,7 @@ void PadVoice::startNote (int /*midiNote*/, float velocity,
     lastSeenMode  = engine.playMode (currentPad);
     released      = false;
     chokeActive   = false;
+    filter.reset();
 
     engine.incrementActivity (currentPad);
     engine.notePlayed (currentPad);
@@ -230,6 +231,7 @@ void PadVoice::renderDirect (juce::AudioBuffer<float>& output, int startSample, 
     const float theta = (pan * 0.5f + 0.5f) * juce::MathConstants<float>::halfPi;
     const float gBase = engine.gainMod (pad) * noteVelocity;
     gainLSm.setTargetValue (gBase * std::cos (theta));
+    filter.set (engine.filterAmount (pad), engine.filterResonance (pad), getSampleRate());
     gainRSm.setTargetValue (gBase * std::sin (theta));
 
     int chL, chR;
@@ -247,6 +249,7 @@ void PadVoice::renderDirect (juce::AudioBuffer<float>& output, int startSample, 
             return;
         }
 
+        filter.process (l, r);
         const float amp = adsr.getNextSample() * chokeLevel.getNextValue();
         const float gl  = gainLSm.getNextValue();
         const float gr  = gainRSm.getNextValue();
@@ -289,6 +292,7 @@ void PadVoice::renderGranular (juce::AudioBuffer<float>& output, int startSample
     const float theta = (pan * 0.5f + 0.5f) * juce::MathConstants<float>::halfPi;
     const float gBase = engine.gainMod (pad) * noteVelocity;
     gainLSm.setTargetValue (gBase * std::cos (theta));
+    filter.set (engine.filterAmount (pad), engine.filterResonance (pad), getSampleRate());
     gainRSm.setTargetValue (gBase * std::sin (theta));
 
     int chL, chR;
@@ -318,6 +322,7 @@ void PadVoice::renderGranular (juce::AudioBuffer<float>& output, int startSample
                 g.active = false;
         }
 
+        filter.process (accL, accR);
         const float amp = adsr.getNextSample() * chokeLevel.getNextValue();
         const float gl  = gainLSm.getNextValue();
         const float gr  = gainRSm.getNextValue();
@@ -432,6 +437,7 @@ void PadVoice::renderStudioChunk (juce::AudioBuffer<float>& output, int startSam
     const float theta = (pan * 0.5f + 0.5f) * juce::MathConstants<float>::halfPi;
     const float gBase = engine.gainMod (pad) * noteVelocity;
     gainLSm.setTargetValue (gBase * std::cos (theta));
+    filter.set (engine.filterAmount (pad), engine.filterResonance (pad), getSampleRate());
     gainRSm.setTargetValue (gBase * std::sin (theta));
 
     int chL, chR;
@@ -445,12 +451,14 @@ void PadVoice::renderStudioChunk (juce::AudioBuffer<float>& output, int startSam
 
     for (int i = 0; i < numSamples; ++i)
     {
+        float fl = sL[i], fr = sR[i];
+        filter.process (fl, fr);
         const float amp = adsr.getNextSample() * chokeLevel.getNextValue();
         const float gl  = gainLSm.getNextValue();
         const float gr  = gainRSm.getNextValue();
         const int   idx = startSample + i;
-        if (oL != nullptr) oL[idx] += sL[i] * gl * amp;
-        if (oR != nullptr) oR[idx] += sR[i] * gr * amp;
+        if (oL != nullptr) oL[idx] += fl * gl * amp;
+        if (oR != nullptr) oR[idx] += fr * gr * amp;
 
         if (chokeActive && ! chokeLevel.isSmoothing()) { finish(); return; }
         if (! adsr.isActive())                          { finish(); return; }
@@ -593,8 +601,6 @@ SamplerEngine::SamplerEngine()
         activity[p].store (0);
         playPosition[p].store (0.0f);
         sampleLoaded[p].store (false);
-        ledBright[p].store (0);
-        ledDim[p].store (0);
     }
 
     for (int b = 0; b < Config::numOutputBuses; ++b)
@@ -619,6 +625,8 @@ void SamplerEngine::cacheParameterPointers (juce::AudioProcessorValueTreeState& 
         modeP   [p] = apvts.getRawParameterValue (ParamID::playMode (p));
         pitchModeP[p] = apvts.getRawParameterValue (ParamID::pitchMode (p));
         grainSizeP[p] = apvts.getRawParameterValue (ParamID::grainSize (p));
+        filterP   [p] = apvts.getRawParameterValue (ParamID::filter (p));
+        resonanceP[p] = apvts.getRawParameterValue (ParamID::resonance (p));
     }
 
     for (int i = 0; i < Config::numLfos; ++i)

@@ -257,9 +257,11 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     addKnob (endKnob,      "End",     ParamID::roleEnd);
 
     addKnob (grainKnob,    "Grain",   ParamID::roleGrain);   // Granular pitch mode only
+    addKnob (filterKnob,   "Filter",  ParamID::roleFilter);
+    addKnob (resoKnob,     "Res",     ParamID::roleReso);
 
     allKnobs = { &volumeKnob, &panKnob, &pitchKnob, &attackKnob,
-                 &releaseKnob, &speedKnob, &startKnob, &endKnob, &grainKnob };
+                 &releaseKnob, &speedKnob, &startKnob, &endKnob, &grainKnob, &filterKnob, &resoKnob };
 
     // Faces and printed scales, in each parameter's own units.
     using M = std::vector<rackui::Mark>;
@@ -277,6 +279,8 @@ MosaicEditor::MosaicEditor (MosaicAudioProcessor& p)
     face (startKnob,   false, "%",      M { { 0, "0" }, { 0.5, "50" }, { 1, "100" } });
     face (endKnob,     false, "%",      M { { 0, "0" }, { 0.5, "50" }, { 1, "100" } });
     face (grainKnob,   false, "ms",     M { { 5, "5" }, { 60, "60" }, { 120, "120" } });
+    face (filterKnob,  true,  "",       M { { -1, "LP" }, { 0, "OFF" }, { 1, "HP" } });
+    face (resoKnob,    false, "",       M { { 0, "0" }, { 0.5, ".5" }, { 1, "1" } });
 
     for (auto* k : allKnobs)
         k->slider.onPopupMenu = [this, k] { showKnobLearnMenu (*k); };
@@ -796,6 +800,11 @@ void MosaicEditor::timerCallback()
     // Presets and host automation move the drop-downs; the LEDs follow.
     playSelect.setSelected (modeBox.getSelectedItemIndex());
     engineSelect.setSelected (pitchModeBox.getSelectedItemIndex());
+    if (const int engine = pitchModeBox.getSelectedItemIndex(); engine != lastEngineHint)
+    {
+        lastEngineHint = engine;
+        repaint (engineSelect.getBounds().expanded (20, 14));
+    }
     for (auto& strip : lfoStrips)
         strip.shapeSelect.setSelected (strip.shape.getSelectedItemIndex());
 }
@@ -1078,6 +1087,15 @@ void MosaicEditor::paintBackground (juce::Graphics& g)
     };
     legend ("PLAY", playSelect);
     legend ("ENGINE", engineSelect);
+    {
+        // What the selected engine does, in a line. (With Pitch 0 and Speed 1 all three play the sample untouched.)
+        static const char* hints[] = { "PITCH AND SPEED MOVE TOGETHER, LIKE TAPE",
+                                       "PITCH AND SPEED APART. GRAIN = SMOOTHNESS",
+                                       "CLEANEST PITCH AND SPEED APART. HEAVIER" };
+        const int index = juce::jlimit (0, 2, pitchModeBox.getSelectedItemIndex());
+        print (g, hints[index], { (float) engineSelect.getX(), (float) engineSelect.getBottom() + 4.0f, 214.0f, 11.0f }, Face::textMedium, 7.5f, 0.04f,
+               colour::inkFaint, juce::Justification::centredLeft);
+    }
     legend ("OUTPUT", outBusBox);
     legend ("SELECT", selectAllButton);
 
@@ -1132,11 +1150,11 @@ void MosaicEditor::resized()
     const int rx = right - 210;
     playSelect.setBounds (rx, 40, right - rx, 18);
     engineSelect.setBounds (rx, 78, right - rx, 18);
-    outBusBox.setBounds (rx, 116, 150, 22);
+    outBusBox.setBounds (rx, 124, 150, 22);
     outBusBox.setVisible (true);
-    selectAllButton.setBounds (rx, 160, 52, 22);
-    bulkMenuButton.setBounds (rx + 58, 160, 56, 22);
-    followButton.setBounds (rx + 122, 161, 90, 20);
+    selectAllButton.setBounds (rx, 166, 52, 22);
+    bulkMenuButton.setBounds (rx + 58, 166, 56, 22);
+    followButton.setBounds (rx + 122, 167, 90, 20);
 
     updateBadge.setBounds (right - 300, baseHeight - 20, 300, 14);
     sizeSelect.setBounds (baseWidth / 2 - 20, baseHeight - 20, 92, 14);

@@ -62,6 +62,60 @@ class SamplerEngine;   // fwd
 /*  One playing sample voice. All per-block values are read from cached atomic
     parameter pointers held by the engine — no allocation, no locking here.
 */
+// A two-pole state-variable filter (TPT form) for one stereo voice, driven by the pad's single FILTER
+// knob: left of centre is a low-pass that closes from 20 kHz down to 80 Hz, right of centre is a
+// high-pass that opens from 20 Hz up to 8 kHz, and the middle is off. RESONANCE raises the peak
+// at the cutoff. Coefficients are set once per block.
+struct PadFilter
+{
+    void reset() noexcept { for (auto& v : ic1) v = 0.0f; for (auto& v : ic2) v = 0.0f; }
+
+    void set (float amount, float resonance, double sampleRate) noexcept
+    {
+        const int wanted = amount < -0.02f ? 1 : amount > 0.02f ? 2 : 0;
+        if (wanted != mode)
+        {
+            reset();
+            mode = wanted;
+        }
+        if (mode == 0)
+            return;
+
+        const float a = std::abs (amount);
+        const double cutoff = mode == 1 ? 20000.0 * std::pow (80.0 / 20000.0, (double) a)
+                                        : 20.0 * std::pow (8000.0 / 20.0, (double) a);
+        const double g = std::tan (juce::MathConstants<double>::pi * juce::jmin (cutoff, sampleRate * 0.45) / sampleRate);
+        const double q = 0.707 + 9.0 * (double) resonance * (double) resonance;
+        k = (float) (1.0 / q);
+        a1 = (float) (1.0 / (1.0 + g * (g + k)));
+        a2 = (float) g * a1;
+        a3 = (float) g * a2;
+    }
+
+    void process (float& l, float& r) noexcept
+    {
+        if (mode == 0)
+            return;
+        l = tick (0, l);
+        r = tick (1, r);
+    }
+
+private:
+    float tick (int ch, float x) noexcept
+    {
+        const float v3 = x - ic2[ch];
+        const float v1 = a1 * ic1[ch] + a2 * v3;
+        const float v2 = ic2[ch] + a2 * ic1[ch] + a3 * v3;
+        ic1[ch] = 2.0f * v1 - ic1[ch];
+        ic2[ch] = 2.0f * v2 - ic2[ch];
+        return mode == 1 ? v2 : x - k * v1 - v2;
+    }
+
+    int mode = 0;   // 0 off, 1 low-pass, 2 high-pass
+    float k = 1.0f, a1 = 1.0f, a2 = 0.0f, a3 = 0.0f;
+    float ic1[2] {}, ic2[2] {};
+};
+
 class PadVoice : public juce::SynthesiserVoice
 {
 public:
@@ -130,6 +184,7 @@ private:
     int    grainHop             = 512;
     bool   stopSpawning         = false;
 
+    PadFilter filter;
     juce::ADSR adsr;
     juce::LinearSmoothedValue<float> chokeLevel;
     juce::LinearSmoothedValue<float> gainLSm, gainRSm;   // de-zippered L/R gains
@@ -240,27 +295,9 @@ public:
         return (padIndex >= 0 && padIndex < Config::maxPads) ? playPosition[padIndex].load() : 0.0f;
     }
 
-    // Hardware LED feedback: per-pad "has a sample" flag and the controller
-    // velocity/colour to send when the pad is lit bright (playing) or dim (idle).
     bool hasSampleLoaded (int padIndex) const noexcept
     {
         return padIndex >= 0 && padIndex < Config::maxPads && sampleLoaded[padIndex].load();
-    }
-    void setLedColours (int padIndex, int brightVel, int dimVel) noexcept
-    {
-        if (padIndex >= 0 && padIndex < Config::maxPads)
-        {
-            ledBright[padIndex].store (brightVel);
-            ledDim[padIndex].store (dimVel);
-        }
-    }
-    int getLedBright (int padIndex) const noexcept
-    {
-        return (padIndex >= 0 && padIndex < Config::maxPads) ? ledBright[padIndex].load() : 0;
-    }
-    int getLedDim (int padIndex) const noexcept
-    {
-        return (padIndex >= 0 && padIndex < Config::maxPads) ? ledDim[padIndex].load() : 0;
     }
 
     // Audio thread --------------------------------------------------------
@@ -286,6 +323,8 @@ public:
     bool  isLooping (int p) const noexcept { return playMode (p) == Config::modeLooping; }
     int   pitchModeOf (int p) const noexcept { return (int) load (pitchModeP, p, (float) Config::pitchGranular); }
     float grainSizeMs (int p) const noexcept { return load (grainSizeP, p, 40.0f); }
+    float filterAmount (int p) const noexcept { return load (filterP, p, 0.0f); }
+    float filterResonance (int p) const noexcept { return load (resonanceP, p, 0.0f); }
 
     // LFO-modulated parameter reads (used by the voices).
     float gainMod  (int p) const noexcept { return juce::jmax (0.0f, gain (p) * (1.0f + modFor (Config::tgtVolume, p))); }
@@ -380,6 +419,8 @@ private:
     const std::atomic<float>* modeP      [Config::maxPads] = {};
     const std::atomic<float>* pitchModeP [Config::maxPads] = {};
     const std::atomic<float>* grainSizeP [Config::maxPads] = {};
+    const std::atomic<float>* filterP    [Config::maxPads] = {};
+    const std::atomic<float>* resonanceP [Config::maxPads] = {};
 
     // LFO cached pointers + runtime state (audio thread owns phase/value).
     const std::atomic<float>* lfoEnableP  [Config::numLfos] = {};
@@ -410,10 +451,7 @@ private:
     std::atomic<int>          lastPlayedPad { -1 };
     std::atomic<juce::uint32>  playCounter  { 0 };
 
-    // Hardware LED feedback state.
     std::atomic<bool>  sampleLoaded [Config::maxPads];
-    std::atomic<int>   ledBright    [Config::maxPads];
-    std::atomic<int>   ledDim       [Config::maxPads];
 
     int busChannelOffset[Config::numOutputBuses] = {};
 

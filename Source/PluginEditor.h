@@ -188,6 +188,8 @@ private:
     LabelledKnob  volumeKnob, panKnob, pitchKnob, attackKnob, releaseKnob, speedKnob;
     LabelledKnob  startKnob, endKnob;
     LabelledKnob  grainKnob;                     // Granular grain size
+    int lastEngineHint = -1;
+    LabelledKnob  filterKnob, resoKnob;          // one-knob filter and its resonance
     std::array<LabelledKnob*, ParamID::numRoles> allKnobs {};
 
     juce::ComboBox modeBox, pitchModeBox, outBusBox;   // play / pitch modes stay hidden: the LED selectors drive them

@@ -88,12 +88,14 @@ namespace ParamID
     inline juce::String playMode (int p) { return "mode_"     + juce::String (p); }
     inline juce::String pitchMode(int p) { return "pmode_"    + juce::String (p); }
     inline juce::String grainSize(int p) { return "grain_"    + juce::String (p); }
+    inline juce::String filter   (int p) { return "filter_"   + juce::String (p); }
+    inline juce::String resonance(int p) { return "reso_"     + juce::String (p); }
 
     // Inspector-knob "roles". A MIDI-CC mapping is stored per role (not per pad),
     // so one learned knob drives whichever pad is currently selected. Saved mappings
     // store the role number, so new roles go at the end.
     enum KnobRole { roleGain = 0, rolePan, rolePitch, roleAttack,
-                    roleRelease, roleSpeed, roleStart, roleEnd, roleGrain, numRoles };
+                    roleRelease, roleSpeed, roleStart, roleEnd, roleGrain, roleFilter, roleReso, numRoles };
 
     inline juce::String forRole (int role, int p)
     {
@@ -108,6 +110,8 @@ namespace ParamID
             case roleStart:   return start (p);
             case roleEnd:     return end (p);
             case roleGrain:   return grainSize (p);
+            case roleFilter:  return filter (p);
+            case roleReso:    return resonance (p);
             default:          return {};
         }
     }
@@ -179,6 +183,15 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { ParamID::grainSize (p), 1 }, "Grain Size" + tag,
             NormalisableRange<float> (5.0f, 120.0f, 0.1f), 40.0f));   // ms (Granular mode)
+
+        // One-knob filter: centre is off, left darkens (low-pass), right thins (high-pass).
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { ParamID::filter (p), 1 }, "Filter" + tag,
+            NormalisableRange<float> (-1.0f, 1.0f, 0.001f), 0.0f));
+
+        layout.add (std::make_unique<AudioParameterFloat> (
+            ParameterID { ParamID::resonance (p), 1 }, "Resonance" + tag,
+            NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f));
     }
 
     for (int i = 0; i < Config::numLfos; ++i)

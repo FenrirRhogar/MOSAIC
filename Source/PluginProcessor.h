@@ -41,7 +41,7 @@ public:
 
     const juce::String getName() const override { return "MOSAIC"; }
     bool acceptsMidi() const override  { return true; }
-    bool producesMidi() const override { return true; }   // LED feedback to the controller
+    bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 5.0; }
 
@@ -185,9 +185,6 @@ private:
     void   rebuildCCMapFromTree();    // rebuild runtime CC map after a state load
     void   restoreFromXml (const juce::XmlElement& xml);   // shared by setState + preset load
 
-    void   updatePadLedColour (int padIndex);              // recompute LED velocities from pad colour
-    void   sendLedFeedback (juce::MidiBuffer& out);        // emit LED note-ons on state change
-    static constexpr int maxLedEventsPerBlock = 16;        // the host owns the output buffer: keep bursts small
 
     juce::AudioProcessorValueTreeState apvts;
     juce::ValueTree metaTree;         // "PADS_META" child of apvts.state
@@ -216,12 +213,6 @@ private:
     std::atomic<int> activePad { 0 };
     juce::RangedAudioParameter* roleParams[ParamID::numRoles][Config::maxPads] = {};
     juce::ValueTree ccMapTree;      // "CCMAP" child of apvts.state, for persistence
-
-    // LED feedback: last velocity/note pushed to the controller per pad (audio
-    // thread only), so we only send on change. -2 == "nothing sent yet".
-    int lastLedVel[Config::maxPads];
-    int lastLedNote[Config::maxPads];
-    static constexpr int ledChannel = 1;
 
     struct DecodedSample
     {

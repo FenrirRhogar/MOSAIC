@@ -289,36 +289,34 @@ public:
             expectWithinAbsoluteError (grain->getValue(), 1.0f, 1.0e-4f);
         }
 
-        beginTest ("A burst of pad LED updates is spread over several blocks");
+        beginTest ("The pad filter darkens or thins the sound, and is transparent at the centre");
         {
-            constexpr int pads = 24;
-            for (int p = 0; p < pads; ++p)
+            const auto energyWith = [&] (float amount)
             {
-                expect (plugin->setPadSample (p, wav));
-                plugin->startMidiLearn (p);
-                juce::MidiBuffer midi;
-                midi.addEvent (juce::MidiMessage::noteOn (1, 40 + p, 0.5f), 0);
-                block (midi);
-                plugin->padReleased (p);
-            }
-
-            // Every pad changes colour at once: that is a burst of LED updates for the controller.
-            for (int p = 0; p < pads; ++p)
-                plugin->setPadColour (p, juce::Colours::white);
-
-            int largest = 0, total = 0, blocksWithEvents = 0;
-            for (int i = 0; i < 12; ++i)
-            {
-                juce::MidiBuffer midi;
-                block (midi);
-                const int count = midi.getNumEvents();
-                largest = juce::jmax (largest, count);
-                total += count;
-                blocksWithEvents += count > 0 ? 1 : 0;
-            }
-            expect (largest <= 17);          // 16 events, plus at most one note-off paired with a note-on
-            expect (total > 17);             // more than one block's worth was needed...
-            expect (blocksWithEvents >= 2);  // ...and it was spread over several blocks
+                auto filtered = makeProcessor();
+                filtered->prepareToPlay (48000.0, 256);
+                expect (filtered->setPadSample (0, wav));
+                auto& fa = filtered->getAPVTS();
+                fa.getParameter (ParamID::playMode (0))->setValueNotifyingHost (0.0f);
+                if (auto* f = fa.getParameter (ParamID::filter (0)))
+                    f->setValueNotifyingHost (f->convertTo0to1 (amount));
+                filtered->padPressed (0, 1.0f);
+                juce::AudioBuffer<float> out (filtered->getTotalNumOutputChannels(), 256);
+                juce::MidiBuffer none;
+                double sum = 0.0;
+                for (int b = 0; b < 8; ++b)
+                {
+                    out.clear();
+                    filtered->processBlock (out, none);
+                    sum += out.getRMSLevel (0, 0, 256);
+                }
+                return sum;
+            };
+            const double open = energyWith (0.0f);
+            expect (open > 0.1);
+            expect (energyWith (-1.0f) < open * 0.2);   // 440 Hz through a low-pass closed to 80 Hz
+            expect (energyWith (1.0f) < open * 0.5);    // ... and through a high-pass at 8 kHz
+            expectWithinAbsoluteError ((float) energyWith (0.01f), (float) open, 1.0e-4f);   // inside the dead zone
         }
 
         root.deleteRecursively();

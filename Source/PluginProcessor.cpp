@@ -13,42 +13,6 @@ namespace
 
     const juce::Identifier kCCMapType  { "CCMAP" };
     juce::Identifier ccPropForNumber (int cc) { return juce::Identifier ("cc" + juce::String (cc)); }
-
-    // Approximate Launchpad X / Mini MK3 programmer-mode velocity palette. Each
-    // entry pairs a representative RGB with a "bright" and "dim" velocity so an
-    // arbitrary pad colour maps to the nearest colour the controller can show.
-    // (Tuned for the current Launchpad line; adjust the indices for other kit.)
-    struct LpColour { int r, g, b, bright, dim; };
-    const LpColour lpPalette[] =
-    {
-        { 255, 255, 255,  3,  1 },   // white / grey
-        { 255,   0,   0,  5,  7 },   // red
-        { 255,  85,   0,  9, 11 },   // orange
-        { 255, 255,   0, 13, 15 },   // yellow
-        {   0, 255,   0, 21, 23 },   // green
-        {   0, 255, 128, 33, 35 },   // spring
-        {   0, 255, 255, 37, 39 },   // cyan
-        {   0,   0, 255, 45, 47 },   // blue
-        { 128,   0, 255, 49, 51 },   // purple
-        { 255,   0, 255, 53, 55 },   // magenta
-        { 255,   0, 128, 57, 59 },   // pink
-    };
-
-    int velocityForColour (juce::Colour c, bool bright)
-    {
-        const int r = c.getRed(), g = c.getGreen(), b = c.getBlue();
-        int  bestIdx  = 0;
-        long bestDist = 200000;   // > max squared RGB distance (3 * 255^2)
-
-        for (int i = 0; i < (int) juce::numElementsInArray (lpPalette); ++i)
-        {
-            const long dr = r - lpPalette[i].r, dg = g - lpPalette[i].g, db = b - lpPalette[i].b;
-            const long dist = dr * dr + dg * dg + db * db;
-            if (dist < bestDist) { bestDist = dist; bestIdx = i; }
-        }
-
-        return bright ? lpPalette[bestIdx].bright : lpPalette[bestIdx].dim;
-    }
 }
 
 //==============================================================================
@@ -74,12 +38,6 @@ MosaicAudioProcessor::MosaicAudioProcessor()
 
     for (auto& slot : ccToRole)
         slot.store (-1);
-
-    for (int p = 0; p < Config::maxPads; ++p)
-    {
-        lastLedVel[p]  = -2;   // nothing sent yet
-        lastLedNote[p] = -1;
-    }
 
     // Cache parameter pointers for each (role, pad) so CC handling never builds
     // strings or does lookups on the audio thread.
@@ -236,56 +194,8 @@ void MosaicAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     engine.process (buffer, midiMessages);
 
-    // Replace the MIDI output with hardware-LED feedback: incoming notes are not
-    // echoed back to the controller, only our per-pad colour updates.
+    // Incoming notes are not echoed to the output.
     midiMessages.clear();
-    sendLedFeedback (midiMessages);
-}
-
-void MosaicAudioProcessor::sendLedFeedback (juce::MidiBuffer& out)
-{
-    // A whole 8x8 grid lighting up would be 128 events in one block, and the host owns this
-    // buffer, so growing it could allocate. Send a few per block; the rest follows next block.
-    int budget = maxLedEventsPerBlock;
-    const auto send = [&] (int note, int velocity)
-    {
-        out.addEvent (juce::MidiMessage::noteOn (ledChannel, note, (juce::uint8) velocity), 0);
-        --budget;
-    };
-
-    for (int p = 0; p < Config::maxPads && budget > 0; ++p)
-    {
-        const int note = engine.getMappedNote (p);
-
-        if (note < 0 || note > 127)
-        {
-            // Pad no longer addressable — extinguish whatever LED it last lit.
-            if (lastLedNote[p] >= 0 && lastLedNote[p] <= 127)
-                send (lastLedNote[p], 0);
-            lastLedNote[p] = -1;
-            lastLedVel[p]  = -2;
-            continue;
-        }
-
-        int vel;
-        if      (! engine.hasSampleLoaded (p)) vel = 0;                      // empty → off
-        else if (engine.isPadActive (p))       vel = engine.getLedBright (p); // playing → bright
-        else                                   vel = engine.getLedDim (p);    // idle    → dim
-
-        if (note != lastLedNote[p])
-        {
-            if (lastLedNote[p] >= 0 && lastLedNote[p] <= 127)
-                send (lastLedNote[p], 0);
-            lastLedNote[p] = note;
-            lastLedVel[p]  = -2;   // force a resend on the new note
-        }
-
-        if (vel != lastLedVel[p])
-        {
-            send (note, vel);
-            lastLedVel[p] = vel;
-        }
-    }
 }
 
 //==============================================================================
@@ -346,7 +256,6 @@ void MosaicAudioProcessor::valueTreePropertyChanged (juce::ValueTree& tree,
         {
             if (prop == kNoteProp)       engine.setMappedNote (pad, (int) tree.getProperty (kNoteProp, -1));
             else if (prop == kBusProp)   engine.setOutputBus (pad, (int) tree.getProperty (kBusProp, 0));
-            else if (prop == kColourProp) updatePadLedColour (pad);
         }
     }
 
@@ -497,7 +406,6 @@ void MosaicAudioProcessor::syncEngineFromMeta()
 
         engine.setMappedNote (p, (int) m.getProperty (kNoteProp, -1));
         engine.setOutputBus  (p, (int) m.getProperty (kBusProp, 0));
-        updatePadLedColour (p);
 
         // Samples load synchronously here: some hosts render offline right after opening a
         // session, and a sample arriving a moment later would be missing from the bounce.
@@ -826,12 +734,6 @@ int MosaicAudioProcessor::getCCForKnobRole (int role) const
             return c;
 
     return -1;
-}
-
-void MosaicAudioProcessor::updatePadLedColour (int padIndex)
-{
-    const auto c = getPadColour (padIndex);
-    engine.setLedColours (padIndex, velocityForColour (c, true), velocityForColour (c, false));
 }
 
 void MosaicAudioProcessor::writeCCMapToTree()
