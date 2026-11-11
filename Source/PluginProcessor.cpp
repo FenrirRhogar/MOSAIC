@@ -98,6 +98,8 @@ MosaicAudioProcessor::MosaicAudioProcessor()
     engine.createSoundsAndVoices();
 
     syncEngineFromMeta();
+    markKitClean();
+    markControllerClean();
     startTimerHz (100);
 }
 
@@ -527,7 +529,11 @@ void MosaicAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 void MosaicAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
+    {
         restoreFromXml (*xml);
+        markKitClean();
+        markControllerClean();
+    }
 }
 
 void MosaicAudioProcessor::restoreFromXml (const juce::XmlElement& xml)
@@ -592,6 +598,8 @@ bool MosaicAudioProcessor::loadPresetFromFile (const juce::File& file)
         if (xml->hasTagName (apvts.state.getType()))
         {
             restoreFromXml (*xml);
+            markKitClean();
+            markControllerClean();
             return true;
         }
     }
@@ -622,6 +630,58 @@ juce::File MosaicAudioProcessor::getControllersDirectory()
 
 juce::String MosaicAudioProcessor::getKitName() const        { return apvts.state.getProperty (kKitNameProp).toString(); }
 juce::String MosaicAudioProcessor::getControllerName() const { return apvts.state.getProperty (kCtlNameProp).toString(); }
+
+MosaicAudioProcessor::KitSnapshot MosaicAudioProcessor::captureKitSnapshot() const
+{
+    KitSnapshot snap;
+    for (auto* raw : getParameters())
+        snap.values.push_back (raw->getValue());
+    for (int p = 0; p < Config::maxPads; ++p)
+    {
+        const auto m = padMeta (p);
+        snap.pads.add (m.getProperty (kFileProp).toString() + "|" + m.getProperty (kColourProp).toString() + "|"
+                       + m.getProperty (kBusProp).toString());
+    }
+    return snap;
+}
+
+MosaicAudioProcessor::ControllerSnapshot MosaicAudioProcessor::captureControllerSnapshot() const
+{
+    ControllerSnapshot snap;
+    for (int p = 0; p < Config::maxPads; ++p)
+        snap.notes[(size_t) p] = (int) padMeta (p).getProperty (kNoteProp, -1);
+    for (int c = 0; c < 128; ++c)
+        snap.ccs[(size_t) c] = ccToRole[c].load();
+    return snap;
+}
+
+void MosaicAudioProcessor::markKitClean()
+{
+    auto snap = captureKitSnapshot();
+    const juce::ScopedLock lock (cleanLock);
+    cleanKit = std::move (snap);
+}
+
+void MosaicAudioProcessor::markControllerClean()
+{
+    auto snap = captureControllerSnapshot();
+    const juce::ScopedLock lock (cleanLock);
+    cleanController = std::move (snap);
+}
+
+bool MosaicAudioProcessor::isKitModified() const
+{
+    const auto now = captureKitSnapshot();
+    const juce::ScopedLock lock (cleanLock);
+    return ! (now == cleanKit);
+}
+
+bool MosaicAudioProcessor::isControllerModified() const
+{
+    const auto now = captureControllerSnapshot();
+    const juce::ScopedLock lock (cleanLock);
+    return ! (now == cleanController);
+}
 
 juce::ValueTree MosaicAudioProcessor::captureController() const
 {
@@ -671,6 +731,7 @@ bool MosaicAudioProcessor::saveKitToFile (const juce::File& file)
     if (auto xml = kit.createXml(); xml != nullptr && xml->writeTo (file))
     {
         apvts.state.setProperty (kKitNameProp, file.getFileNameWithoutExtension(), nullptr);
+        markKitClean();
         return true;
     }
     return false;
@@ -687,6 +748,7 @@ bool MosaicAudioProcessor::loadKitFromFile (const juce::File& file)
     applyController (controller);
     apvts.state.setProperty (kKitNameProp, file.getFileNameWithoutExtension(), nullptr);
     apvts.state.setProperty (kCtlNameProp, controllerName, nullptr);
+    markKitClean();
     return true;
 }
 
@@ -695,6 +757,7 @@ bool MosaicAudioProcessor::saveControllerToFile (const juce::File& file)
     if (auto xml = captureController().createXml(); xml != nullptr && xml->writeTo (file))
     {
         apvts.state.setProperty (kCtlNameProp, file.getFileNameWithoutExtension(), nullptr);
+        markControllerClean();
         return true;
     }
     return false;
@@ -707,6 +770,7 @@ bool MosaicAudioProcessor::loadControllerFromFile (const juce::File& file)
         return false;
     applyController (juce::ValueTree::fromXml (*xml));
     apvts.state.setProperty (kCtlNameProp, file.getFileNameWithoutExtension(), nullptr);
+    markControllerClean();
     return true;
 }
 
@@ -714,6 +778,7 @@ void MosaicAudioProcessor::clearControllerMapping()
 {
     applyController (juce::ValueTree (kControllerType));
     apvts.state.setProperty (kCtlNameProp, juce::String(), nullptr);
+    markControllerClean();
 }
 
 //==============================================================================

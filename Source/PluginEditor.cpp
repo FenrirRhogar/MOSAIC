@@ -791,6 +791,7 @@ void MosaicEditor::timerCallback()
 
     updateKnobDecorations();
     refreshOutputMenu();
+    refreshPresetNames();   // the asterisk follows edits
 
     // Presets and host automation move the drop-downs; the LEDs follow.
     playSelect.setSelected (modeBox.getSelectedItemIndex());
@@ -880,10 +881,13 @@ void MosaicEditor::PresetWindow::paintButton (juce::Graphics& g, bool over, bool
 void MosaicEditor::refreshPresetNames()
 {
     const auto kit = processor.getKitName(), controller = processor.getControllerName();
-    kitWindow.setButtonText (kit.isNotEmpty() ? kit.toUpperCase() : juce::String ("UNSAVED KIT"));
-    controllerWindow.setButtonText (controller.isNotEmpty() ? controller.toUpperCase() : juce::String ("NO CONTROLLER PRESET"));
-    kitWindow.repaint();
-    controllerWindow.repaint();
+    const auto kitText = (kit.isNotEmpty() ? kit.toUpperCase() : juce::String ("UNSAVED KIT")) + (processor.isKitModified() ? "*" : "");
+    const auto controllerText = (controller.isNotEmpty() ? controller.toUpperCase() : juce::String ("NO CONTROLLER PRESET"))
+                                + (controller.isNotEmpty() && processor.isControllerModified() ? "*" : "");
+    if (kitText != kitWindow.getButtonText())
+        kitWindow.setButtonText (kitText);
+    if (controllerText != controllerWindow.getButtonText())
+        controllerWindow.setButtonText (controllerText);
 }
 
 void MosaicEditor::afterKitLoaded()

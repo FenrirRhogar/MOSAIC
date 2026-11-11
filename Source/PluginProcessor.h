@@ -73,6 +73,10 @@ public:
     void clearControllerMapping();
     juce::String getKitName() const;
     juce::String getControllerName() const;
+    /// True when the sound (samples, pad settings, knobs) differs from the kit as it was loaded or
+    /// saved, or the notes and CCs differ from the controller preset. Putting things back clears it.
+    bool isKitModified() const;
+    bool isControllerModified() const;
 
     //==========================================================================
     // Public API used by the editor (all message thread).
@@ -142,6 +146,33 @@ public:
     void servicePendingMidi();
 
 private:
+    struct KitSnapshot
+    {
+        std::vector<float> values;
+        juce::StringArray pads;
+        bool operator== (const KitSnapshot& o) const
+        {
+            if (pads != o.pads || values.size() != o.values.size())
+                return false;
+            for (size_t i = 0; i < values.size(); ++i)
+                if (std::abs (values[i] - o.values[i]) > 1.0e-5f)
+                    return false;
+            return true;
+        }
+    };
+    struct ControllerSnapshot
+    {
+        std::array<int, Config::maxPads> notes {};
+        std::array<int, 128> ccs {};
+        bool operator== (const ControllerSnapshot& o) const { return notes == o.notes && ccs == o.ccs; }
+    };
+    KitSnapshot captureKitSnapshot() const;
+    ControllerSnapshot captureControllerSnapshot() const;
+    void markKitClean();
+    void markControllerClean();
+    mutable juce::CriticalSection cleanLock;
+    KitSnapshot cleanKit;
+    ControllerSnapshot cleanController;
     static BusesProperties makeBusesProperties();
     juce::ValueTree padMeta (int padIndex);
     juce::ValueTree padMeta (int padIndex) const;

@@ -184,6 +184,21 @@ public:
         expectEquals (plugin->getKitName(), juce::String ("Kit A"));
         expectEquals (plugin->getControllerName(), juce::String ("Pads A"));
 
+        beginTest ("The kit and controller names are flagged once they differ from what was loaded");
+        expect (! plugin->isKitModified());
+        gain->setValueNotifyingHost (0.9f);
+        expect (plugin->isKitModified());
+        gain->setValueNotifyingHost (0.3f);
+        expect (! plugin->isKitModified());          // putting the knob back clears it
+        expect (plugin->isControllerModified());     // CC 30 was learnt after "Pads A" was stored
+        expect (plugin->saveControllerToFile (controllerFile));
+        expect (! plugin->isControllerModified());
+        learnCC (ParamID::roleGrain, 31);
+        expect (plugin->isControllerModified());
+        expect (plugin->loadControllerFromFile (controllerFile));
+        expect (! plugin->isControllerModified());
+        expect (! plugin->isKitModified());
+
         root.deleteRecursively();
     }
 };
