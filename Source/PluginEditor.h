@@ -28,6 +28,17 @@ class MosaicLookAndFeel : public juce::LookAndFeel_V4
 public:
     MosaicLookAndFeel();
 
+    // Plain arrow wherever a component asks for the default cursor (see rackui::arrowCursor).
+    juce::MouseCursor getMouseCursorFor (juce::Component& c) override
+    {
+        const auto cursor = juce::LookAndFeel_V4::getMouseCursorFor (c);
+        return cursor == juce::MouseCursor::NormalCursor || cursor == juce::MouseCursor::ParentCursor ? arrow : cursor;
+    }
+
+private:
+    juce::MouseCursor arrow { rackui::arrowCursor() };
+
+public:
     void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h,
                            float sliderPos, float startAngle, float endAngle,
                            juce::Slider&) override;
